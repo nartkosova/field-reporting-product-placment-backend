@@ -7,7 +7,7 @@ import config from './utils/config';
 import userRoutes from './routes/userRoutes';
 import storeRoutes from './routes/storeRoutes';
 import productRoutes from './routes/productRoutes';
-
+import facingsRoutes from './routes/facingsRoutes'
 const app = express();
 
 app.use(cors());
@@ -17,6 +17,7 @@ app.use(logger);
 app.use('/api/users', userRoutes);
 app.use('/api/stores', middleware.tokenExtractor, middleware.authenticateToken, storeRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/facings', facingsRoutes);
 
 app.use(middleware.errorHandler, middleware.requestLogger);
 

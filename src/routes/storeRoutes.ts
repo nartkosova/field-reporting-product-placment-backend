@@ -1,12 +1,11 @@
 import express from 'express';
-import { createStore, getStores, getStoreById, updateStore, deleteStore } from '../controllers/storeController';
+import { getStores, getStoreById, createStore, getStoreProducts } from '../controllers/storeController';
 
 const router = express.Router();
 
-router.post('/', createStore);
 router.get('/', getStores);
-router.get('/:id', getStoreById);
-router.put('/:id', updateStore);
-router.delete('/:id', deleteStore);
+router.get('/:store_id', getStoreById);
+router.post('/', createStore);
+router.get('/:store_id/products', getStoreProducts);
 
 export default router;
