@@ -1,13 +1,13 @@
-import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
-import db from '../models/db';
-import { RowDataPacket } from 'mysql2';
+import { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+import db from "../models/db";
+import { RowDataPacket } from "mysql2";
 const logger = require("./logger");
 
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'default_secret';
+const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
 
 interface AuthenticatedRequest extends Request {
   token?: string;
@@ -23,35 +23,65 @@ const middleware = {
     next();
   },
 
-  errorHandler: (err: Error, req: Request, res: Response, next: NextFunction): void => {
+  errorHandler: (
+    err: Error,
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void => {
     console.error(err);
-    res.status(500).json({ error: 'Internal Server Error' });
+
+    if (err instanceof SyntaxError) {
+      res.status(400).json({ error: "Invalid JSON" });
+    } else if (err instanceof Error) {
+      res.status(422).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: "Internal Server Error" });
+    }
   },
 
   unknownEndpoint: (req: Request, res: Response) => {
     res.status(404).send({ error: "Unknown endpoint" });
   },
 
-  tokenExtractor: (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-    const authHeader = req.headers.authorization || req.headers.Authorization;
+  tokenExtractor: (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): void => {
+    let authHeader = req.headers.authorization || req.headers.Authorization;
 
-    if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({ error: 'Access Denied: No Token Provided' });
+    if (Array.isArray(authHeader)) {
+      authHeader = authHeader[0];
+    }
+    if (
+      !authHeader ||
+      typeof authHeader !== "string" ||
+      !authHeader.startsWith("Bearer ")
+    ) {
+      res.status(401).json({ error: "Access Denied: No Token Provided" });
       return;
     }
 
-    req.token = authHeader.split(' ')[1];
+    req.token = authHeader.split(" ")[1];
     next();
   },
 
-  authenticateToken: (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+  authenticateToken: (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): void => {
     if (!req.token) {
-      res.status(401).json({ error: 'Unauthorized: No Token Found' });
+      res.status(401).json({ error: "Unauthorized: No Token Found" });
       return;
     }
 
     try {
-      const decodedToken = jwt.verify(req.token, JWT_SECRET) as { user_id: number; role: string };
+      const decodedToken = jwt.verify(req.token, JWT_SECRET) as {
+        user_id: number;
+        role: string;
+      };
       req.user = decodedToken;
       next();
     } catch (error) {
@@ -59,22 +89,30 @@ const middleware = {
 
       if (error instanceof jwt.TokenExpiredError) {
         res.status(401).json({ error: "Token expired, please log in again" });
+        return;
       } else if (error instanceof jwt.JsonWebTokenError) {
         res.status(403).json({ error: "Invalid token, authentication failed" });
+        return;
       }
 
       res.status(500).json({ error: "Internal Server Error" });
     }
   },
 
-  userExtractor: async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  userExtractor: async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) => {
     if (!req.user || !req.user.user_id) {
       res.status(401).json({ error: "Unauthorized: No valid user found" });
     }
 
     try {
-      const query = 'SELECT user_id, username, email, role FROM users WHERE user_id = ?';
-      const [rows] = await db.promise().query<RowDataPacket[]>(query, [req.user.user_id]);
+      const query = "SELECT user_id, user, role FROM users WHERE user_id = ?";
+      const [rows] = await db
+        .promise()
+        .query<RowDataPacket[]>(query, [req.user.user_id]);
 
       if (rows.length === 0) {
         res.status(404).json({ error: "User not found!" });
@@ -86,7 +124,7 @@ const middleware = {
       console.error("Error fetching user:", error);
       res.status(500).json({ error: "Internal Server Error" });
     }
-  }
+  },
 };
 
 export default middleware;

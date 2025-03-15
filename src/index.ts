@@ -15,9 +15,9 @@ app.use(bodyParser.json());
 app.use(logger);
 
 app.use('/api/users', userRoutes);
-app.use('/api/stores', middleware.tokenExtractor, middleware.authenticateToken, storeRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/facings', facingsRoutes);
+app.use('/api/stores', middleware.tokenExtractor, middleware.authenticateToken, middleware.userExtractor , storeRoutes);
+app.use('/api/products', middleware.tokenExtractor, middleware.authenticateToken, middleware.userExtractor, productRoutes);
+app.use('/api/facings', middleware.tokenExtractor, middleware.authenticateToken, middleware.userExtractor, facingsRoutes);
 
 app.use(middleware.errorHandler, middleware.requestLogger);
 

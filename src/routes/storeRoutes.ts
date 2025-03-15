@@ -1,6 +1,5 @@
 import express from 'express';
 import { getStores, getStoreById, createStore, getStoreProducts } from '../controllers/storeController';
-
 const router = express.Router();
 
 router.get('/', getStores);
