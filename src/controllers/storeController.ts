@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import db from "../models/db";
 import { QueryError, RowDataPacket } from "mysql2";
-
 export const getStores = async (req: Request, res: Response): Promise<void> => {
   try {
     const query = "SELECT * FROM stores";
@@ -30,6 +29,29 @@ export const getStoreById = async (
     }
 
     res.json(stores[0]);
+  } catch (error) {
+    console.error("Error fetching store:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+export const getStoreByUserId = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { user_id } = req.params;
+    const query =
+      "SELECT * FROM stores WHERE user_id IS NOT NULL AND user_id = ?";
+    const [stores] = await db
+      .promise()
+      .query<RowDataPacket[]>(query, [user_id]);
+
+    if (stores.length === 0) {
+      res.status(404).json({ error: "User has no stores" });
+      return;
+    }
+
+    res.status(200).json(stores);
   } catch (error) {
     console.error("Error fetching store:", error);
     res.status(500).json({ error: "Internal server error" });
