@@ -119,10 +119,11 @@ export const getStoreProducts = async (
   try {
     const { store_id } = req.params;
 
-    const storeQuery = "SELECT store_category FROM stores WHERE store_id = ?"; //duhet me qit products foreign key edhe user
+    const storeQuery = "SELECT store_category FROM stores WHERE store_id = ?";
     const [storeResult] = await db
       .promise()
       .query<RowDataPacket[]>(storeQuery, [store_id]);
+
     if (storeResult.length === 0) {
       res.status(404).json({ error: "Store not found" });
       return;
@@ -130,13 +131,23 @@ export const getStoreProducts = async (
 
     const store_category = storeResult[0].store_category;
 
+    const categoryOrder = ["A", "B", "C", "D", "E", "F", "G"];
+    const storeCategoryIndex = categoryOrder.indexOf(store_category);
+    if (storeCategoryIndex === -1) {
+      res.status(400).json({ error: "Invalid store category" });
+      return;
+    }
+
+    const allowedCategories = categoryOrder.slice(storeCategoryIndex);
+    const placeholders = allowedCategories.map(() => "?").join(",");
+
     const query = `
       SELECT * FROM podravka_products 
-      WHERE product_category <= ?
+      WHERE product_category IN (${placeholders})
     `;
     const [products] = await db
       .promise()
-      .query<RowDataPacket[]>(query, [store_category]);
+      .query<RowDataPacket[]>(query, allowedCategories);
 
     res.json(products);
   } catch (error) {
