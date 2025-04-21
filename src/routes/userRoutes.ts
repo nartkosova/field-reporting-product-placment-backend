@@ -1,6 +1,5 @@
 import express from "express";
 import { createUser, getUsers, loginUser } from "../controllers/userController";
-import middleware from "../utils/middleware";
 const router = express.Router();
 
 router.get("/", getUsers);

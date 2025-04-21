@@ -174,10 +174,14 @@ export const getFacingsWithCompetitors = async (
       pf_data.category,
       pf_data.report_date,
       pf_data.total_facings,
-      JSON_OBJECTAGG(
-        CONCAT(cb.brand_name, '-', cf.competitor_id),
-        COALESCE(cf.facings_count, 0)
-      ) AS competitors,
+JSON_OBJECTAGG(
+  CONCAT(
+    COALESCE(cb.brand_name, 'UnknownBrand'), 
+    '-', 
+    COALESCE(cf.competitor_id, 'UnknownID')
+  ),
+  COALESCE(cf.facings_count, 0)
+) AS competitors,
       SUM(COALESCE(cf.facings_count, 0)) AS total_competitor_facings
     FROM (
       SELECT 
