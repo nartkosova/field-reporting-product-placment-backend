@@ -244,3 +244,139 @@ JSON_OBJECTAGG(
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
+export const batchCreatePodravkaFacings = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const facings = req.body; // expecting an array
+
+    if (!Array.isArray(facings) || facings.length === 0) {
+      res.status(400).json({ error: "Facings array is required!" });
+      return;
+    }
+
+    // Validate each facing (basic check)
+    for (const facing of facings) {
+      const { user_id, store_id, product_id, category, facings_count } = facing;
+      if (
+        !user_id ||
+        !store_id ||
+        !product_id ||
+        !category ||
+        facings_count == null
+      ) {
+        res
+          .status(400)
+          .json({ error: "Each facing must have all fields filled!" });
+        return;
+      }
+    }
+
+    const values = facings.map((f) => [
+      f.user_id,
+      f.store_id,
+      f.product_id,
+      f.category,
+      f.facings_count,
+    ]);
+
+    const query =
+      "INSERT INTO podravka_facings (user_id, store_id, product_id, category, facings_count) VALUES ?";
+
+    const [result] = await db.promise().query<OkPacket>(query, [values]);
+
+    res.status(201).json({
+      affectedRows: result.affectedRows,
+      message: "Podravka facings batch added successfully!",
+    });
+  } catch (error) {
+    console.error("Error batch adding Podravka facings:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+export const batchCreateCompetitorFacings = async (
+  req: Request,
+  res: Response
+) => {
+  const facings = req.body;
+
+  if (!Array.isArray(facings) || facings.length === 0) {
+    res.status(400).json({ error: "Facings array is required" });
+    return;
+  }
+
+  const connection = await db.promise().getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    for (const facing of facings) {
+      const {
+        user_id,
+        store_id,
+        competitor_id,
+        category,
+        facings_count,
+        name,
+      } = facing;
+
+      if (!user_id || !store_id || !category || facings_count == null) {
+        throw new Error("Missing required facing fields");
+      }
+
+      if (!competitor_id && !name) {
+        throw new Error("Either competitor_id or name is required");
+      }
+
+      // If competitor_id is missing but name is provided
+      if (!competitor_id && name) {
+        // Check if brand already exists
+        const [existingBrands] = await connection.query<any[]>(
+          "SELECT competitor_id FROM competitor_brands WHERE LOWER(brand_name) = LOWER(?)",
+          [name]
+        );
+
+        if (existingBrands.length > 0) {
+          facing.competitor_id = existingBrands[0].competitor_id;
+        } else {
+          // Insert new brand
+          const [brandResult] = await connection.query<OkPacket>(
+            "INSERT INTO competitor_brands (brand_name) VALUES (?)",
+            [name]
+          );
+          facing.competitor_id = brandResult.insertId;
+        }
+      }
+    }
+
+    // Prepare bulk insert values after resolving competitor_id
+    const values = facings.map((facing) => [
+      facing.user_id,
+      facing.store_id,
+      facing.competitor_id,
+      facing.category,
+      facing.facings_count,
+    ]);
+
+    const insertFacingsQuery = `
+      INSERT INTO competitor_facings 
+        (user_id, store_id, competitor_id, category, facings_count)
+      VALUES ?
+    `;
+
+    await connection.query(insertFacingsQuery, [values]);
+
+    await connection.commit();
+    res
+      .status(201)
+      .json({ message: "Competitor facings batch created successfully!" });
+  } catch (error) {
+    console.error("Batch competitor facings error:", error);
+    await connection.rollback();
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    connection.release();
+  }
+};
