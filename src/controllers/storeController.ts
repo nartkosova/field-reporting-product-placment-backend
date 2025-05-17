@@ -3,7 +3,7 @@ import db from "../models/db";
 import { QueryError, RowDataPacket } from "mysql2";
 export const getStores = async (req: Request, res: Response): Promise<void> => {
   try {
-    const query = "SELECT * FROM stores";
+    const query = "SELECT * FROM stores WHERE user_id IS NOT NULL";
     const [stores] = await db.promise().query<RowDataPacket[]>(query);
     res.json(stores);
   } catch (error) {

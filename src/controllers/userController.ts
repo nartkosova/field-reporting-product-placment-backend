@@ -42,7 +42,7 @@ export const createUser = async (
   }
 };
 export const getUsers = (req: Request, res: Response): void => {
-  const query = "SELECT * FROM users";
+  const query = "SELECT user, user_id FROM users";
 
   db.query<RowDataPacket[]>(query, (err: QueryError | null, results) => {
     if (err) return res.status(500).json({ error: err.message });

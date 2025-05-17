@@ -78,3 +78,36 @@ export const batchCreatePriceCheck = async (
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
+export const getPriceCheck = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { store_id, category, product_type } = req.query;
+    let query = `SELECT * FROM price_checker`;
+    const params: any[] = [];
+
+    if (store_id) {
+      query += ` WHERE store_id = ?`;
+      params.push(store_id);
+    }
+
+    if (category) {
+      query += ` AND category = ?`;
+      params.push(category);
+    }
+
+    if (product_type) {
+      query += ` AND product_type = ?`;
+      params.push(product_type);
+    }
+
+    const [results] = await db.promise().query(query, params);
+
+    res.json(results);
+  } catch (error) {
+    console.error("Error fetching price check:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};

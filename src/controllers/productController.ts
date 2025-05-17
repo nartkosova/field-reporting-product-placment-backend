@@ -135,3 +135,77 @@ export const getCompetitorBrandByName = async (
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
+export const createCompetitorProduct = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { competitor_id, name, category, weight, created_by } = req.body;
+
+    if (!competitor_id || !name || !category) {
+      res
+        .status(400)
+        .json({ error: "competitor_id, name, and category are required!" });
+      return;
+    }
+
+    const query = `
+      INSERT INTO competitor_products
+        (competitor_id, name, category, weight, created_by)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+
+    const [result] = await db
+      .promise()
+      .query<OkPacket>(query, [
+        competitor_id,
+        name,
+        category,
+        weight ?? null,
+        created_by ?? null,
+      ]);
+
+    res.status(201).json({
+      id: result.insertId,
+      message: "Competitor product added successfully!",
+    });
+  } catch (error) {
+    console.error("Error adding competitor product:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const getCompetitorProducts = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { category, competitor_id } = req.query;
+
+    let query = "SELECT * FROM competitor_products WHERE 1=1";
+    const params: any[] = [];
+
+    if (category) {
+      query += " AND category = ?";
+      params.push(category);
+    }
+
+    if (competitor_id) {
+      query += " AND competitor_id = ?";
+      params.push(competitor_id);
+    }
+
+    const [products] = await db.promise().query<RowDataPacket[]>(query, params);
+
+    if (!products.length) {
+      res.status(404).json({ error: "No competitor products found" });
+      return;
+    }
+
+    res.status(200).json(products);
+  } catch (error) {
+    console.error("Error fetching competitor products:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
