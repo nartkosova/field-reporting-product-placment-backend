@@ -10,13 +10,23 @@ export const createProduct = async (
     const { category, name, podravka_code, elkos_code, product_category } =
       req.body;
 
+    const user = req.user; // from middleware
+    if (!user || !user.user_id) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
     if (!category || !name || !podravka_code || !product_category) {
       res.status(400).json({ error: "All required fields must be provided!" });
       return;
     }
 
-    const query = `INSERT INTO podravka_products (category, name, podravka_code, elkos_code, product_category) 
-    VALUES (?, ?, ?, ?, ?)`;
+    const query = `
+      INSERT INTO podravka_products 
+        (category, name, podravka_code, elkos_code, product_category) 
+      VALUES (?, ?, ?, ?, ?)
+    `;
+
     const [result] = await db
       .promise()
       .query(query, [
@@ -27,11 +37,11 @@ export const createProduct = async (
         product_category,
       ]);
 
-    const insertId = (result as any).insertId; // ✅ Extract insertId properly
+    const insertId = (result as any).insertId;
+
     res
       .status(201)
       .json({ id: insertId, message: "Product added successfully!" });
-    return;
   } catch (error) {
     console.error("Error adding product:", error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -76,16 +86,21 @@ export const createCompetitorBrand = async (
   try {
     const { brand_name } = req.body;
 
+    const user = req.user;
+    if (!user || !user.user_id) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
     if (!brand_name) {
       res.status(400).json({ error: "All required fields must be provided!" });
       return;
     }
 
-    const query = `INSERT INTO competitor_brands (brand_name) 
-    VALUES (?)`;
+    const query = `INSERT INTO competitor_brands (brand_name) VALUES (?)`;
     const [result] = await db.promise().query(query, [brand_name]);
 
-    const insertId = (result as any).insertId; // ✅ Extract insertId properly
+    const insertId = (result as any).insertId;
     res
       .status(201)
       .json({ id: insertId, message: "Competitor brand added successfully!" });
@@ -141,12 +156,25 @@ export const createCompetitorProduct = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { competitor_id, name, category, weight, created_by } = req.body;
+    const user = req.user;
+    if (!user || !user.user_id) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const { competitor_id, name, category, weight } = req.body;
+
+    if ("created_by" in req.body && req.body.created_by !== user.user_id) {
+      res.status(403).json({
+        error: "Manual assignment of created_by is not allowed.",
+      });
+      return;
+    }
 
     if (!competitor_id || !name || !category) {
-      res
-        .status(400)
-        .json({ error: "competitor_id, name, and category are required!" });
+      res.status(400).json({
+        error: "competitor_id, name, and category are required!",
+      });
       return;
     }
 
@@ -163,7 +191,7 @@ export const createCompetitorProduct = async (
         name,
         category,
         weight ?? null,
-        created_by ?? null,
+        user.user_id,
       ]);
 
     res.status(201).json({

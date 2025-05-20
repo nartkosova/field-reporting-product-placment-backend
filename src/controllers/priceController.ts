@@ -7,7 +7,13 @@ export const batchCreatePriceCheck = async (
   res: Response
 ): Promise<void> => {
   try {
+    const user_id = req.user?.user_id;
     const prices = req.body;
+
+    if (!user_id) {
+      res.status(401).json({ error: "Unauthorized." });
+      return;
+    }
 
     if (!Array.isArray(prices) || prices.length === 0) {
       res.status(400).json({ error: "Prices array is required!" });
@@ -16,25 +22,31 @@ export const batchCreatePriceCheck = async (
 
     for (const price of prices) {
       const {
-        user_id,
+        user_id: payloadUserId,
         store_id,
         category,
         product_type,
         podravka_product_id,
         competitor_id,
         regular_price,
-        deal_price,
-        discount_description,
       } = price;
+
+      if (payloadUserId !== undefined && payloadUserId !== user_id) {
+        res.status(403).json({
+          error:
+            "You are not authorized to submit price data for another user.",
+        });
+        return;
+      }
 
       const validType =
         product_type === "podravka" || product_type === "competitor";
+
       const hasValidProduct =
         (product_type === "podravka" && podravka_product_id) ||
         (product_type === "competitor" && competitor_id);
 
       if (
-        !user_id ||
         !store_id ||
         !category ||
         !validType ||
@@ -43,10 +55,13 @@ export const batchCreatePriceCheck = async (
       ) {
         res.status(400).json({
           error:
-            "Each price entry must have user_id, store_id, category, product_type, and regular_price, and valid product ID",
+            "Each price entry must include store_id, category, valid product_type, and product ID, and regular_price",
         });
         return;
       }
+
+      // enforce user_id to prevent tampering
+      price.user_id = user_id;
     }
 
     const values = prices.map((p) => [

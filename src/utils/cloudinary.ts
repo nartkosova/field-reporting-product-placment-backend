@@ -9,17 +9,42 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+interface File {
+  originalname: string;
+}
+
+interface RequestBody {
+  customName?: string;
+}
+
+interface Request {
+  body: RequestBody;
+}
+
 const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "podravka",
-    allowed_formats: ["jpg", "png", "jpeg", "webp"],
-    transformation: [
-      { quality: "auto:eco", fetch_format: "auto", width: 800, crop: "limit" },
-    ],
+  cloudinary,
+  params: async (req: any, file: any) => {
+    const customName = req.body?.customName;
+    const originalName = file.originalname.split(".")[0];
+    const baseName = customName || originalName;
+    const public_id = baseName.replace(/\s+/g, "-").toLowerCase();
+
+    return {
+      folder: "podravka",
+      public_id,
+      allowed_formats: ["jpg", "png", "jpeg", "webp"],
+      transformation: [
+        {
+          quality: "auto:eco",
+          fetch_format: "auto",
+          width: 800,
+          crop: "limit",
+        },
+      ],
+    };
   },
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({ storage });
 
-module.exports = { upload };
+module.exports = { upload, cloudinary };

@@ -1,28 +1,37 @@
-import { Request, Response } from "express";
+import { Request, RequestHandler, Response } from "express";
 import db from "../models/db";
+import { extractPublicId } from "../utils/extractIds";
+const { cloudinary } = require("../utils/cloudinary");
 
 export const uploadReportPhoto = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const { photo_type, category, user_id, store_id } = req.body;
+    const tokenUserId = req.user?.user_id;
 
-    if (!req.file || !photo_type || !category || !user_id || !store_id) {
+    const { photo_type, category, store_id } = req.body;
+
+    if (!req.file || !photo_type || !category || !store_id || !tokenUserId) {
       res.status(400).json({ error: "Missing required fields" });
       return;
     }
-
+    const file = req.file as Express.Multer.File;
+    if (!file || !file.path) {
+      res.status(400).json({ error: "Photo upload failed" });
+      return;
+    }
     const photoUrl = (req.file as Express.Multer.File).path;
 
     const query = `
-      INSERT INTO report_photos 
-        (photo_type, photo_url, category, user_id, store_id)
-      VALUES (?, ?, ?, ?, ?)
-    `;
+        INSERT INTO report_photos 
+          (photo_type, photo_url, category, user_id, store_id)
+        VALUES (?, ?, ?, ?, ?)
+      `;
+
     await db
       .promise()
-      .execute(query, [photo_type, photoUrl, category, user_id, store_id]);
+      .execute(query, [photo_type, photoUrl, category, tokenUserId, store_id]);
 
     res
       .status(201)
@@ -57,5 +66,51 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
   } catch (err) {
     console.error("Error fetching report photos:", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const bulkDeletePhotos: RequestHandler = async (req, res) => {
+  const { photoUrls } = req.body as { photoUrls: string[] };
+
+  if (!Array.isArray(photoUrls)) {
+    res.status(400).json({ error: "Invalid photoUrls array" });
+    return;
+  }
+
+  try {
+    const results = await Promise.all(
+      photoUrls.map(async (url) => {
+        const publicId = extractPublicId(url);
+        console.log("Extracted public_id:", publicId);
+
+        if (!publicId) {
+          return { url, status: "failed", reason: "Invalid URL" };
+        }
+
+        const cloudRes = await cloudinary.uploader.destroy(publicId, {
+          invalidate: true,
+        });
+        console.log("Cloudinary destroy result:", cloudRes);
+
+        if (cloudRes.result !== "ok") {
+          return { url, status: "failed", reason: cloudRes.result };
+        }
+
+        const [dbResult] = await db
+          .promise()
+          .query("DELETE FROM report_photos WHERE photo_url = ?", [url]);
+
+        return {
+          url,
+          status: "success",
+          dbAffected: (dbResult as any).affectedRows ?? 0,
+        };
+      })
+    );
+
+    res.status(200).json({ results });
+  } catch (err) {
+    console.error("Bulk deletion error:", err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };

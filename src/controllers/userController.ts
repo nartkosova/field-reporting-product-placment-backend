@@ -56,7 +56,7 @@ export const loginUser = (req: Request, res: Response): void => {
   db.query(query, [user], (err, results: any) => {
     if (err) return res.status(500).json({ error: "Database error" });
     if (results.length === 0)
-      return res.status(401).json({ error: "Invalid credentials" });
+      return res.status(401).json({ error: "Fjalkalimi esht gabim" });
 
     const user = results[0];
 
@@ -64,7 +64,7 @@ export const loginUser = (req: Request, res: Response): void => {
       if (bcryptErr)
         return res.status(500).json({ error: "Error comparing passwords" });
       if (!isMatch)
-        return res.status(401).json({ error: "Invalid credentials" });
+        return res.status(401).json({ error: "Fjalkalimi esht gabim" });
 
       const token = jwt.sign(
         { user_id: user.user_id, user: user.user, role: user.role },
@@ -77,4 +77,44 @@ export const loginUser = (req: Request, res: Response): void => {
       });
     });
   });
+};
+
+export const updateUserPassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { newPassword } = req.body;
+    const user_id = req.user?.user_id;
+    if ("user_id" in req.body) {
+      res
+        .status(403)
+        .json({ error: "Manual user_id assignment is not allowed" });
+      return;
+    }
+    if (!user_id || !newPassword) {
+      res.status(400).json({ error: "User ID and new password are required" });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      res.status(400).json({ error: "Password must be at least 8 characters" });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    const query = "UPDATE users SET password = ? WHERE user_id = ?";
+    db.query<OkPacket>(query, [hashedPassword, user_id], (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+
+      if (result.affectedRows === 0) {
+        res.status(404).json({ error: "User not found" });
+      } else {
+        res.json({ message: "Password updated successfully" });
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Error updating password" });
+  }
 };

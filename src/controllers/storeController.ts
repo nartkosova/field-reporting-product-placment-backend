@@ -34,6 +34,14 @@ export const getStoreById = async (
     res.status(500).json({ error: "Internal server error" });
   }
 };
+export const getStoreNameById = async (
+  store_id: number
+): Promise<string | null> => {
+  const [rows]: any = await db
+    .promise()
+    .query(`SELECT store_name FROM stores WHERE store_id = ?`, [store_id]);
+  return rows.length > 0 ? rows[0].store_name : null;
+};
 export const getStoreByUserId = async (
   req: Request,
   res: Response
@@ -71,8 +79,20 @@ export const createStore = async (
       store_category,
       merchandiser,
       location,
-      user_id,
     } = req.body;
+
+    const user = req.user;
+    if (!user || !user.user_id) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    if ("user_id" in req.body && req.body.user_id !== user.user_id) {
+      res
+        .status(403)
+        .json({ error: "Manual assignment of user_id is not allowed." });
+      return;
+    }
 
     if (
       !store_name ||
@@ -81,25 +101,29 @@ export const createStore = async (
       !store_group ||
       !store_category ||
       !merchandiser ||
-      !location ||
-      !user_id
+      !location
     ) {
       res.status(400).json({ error: "All fields are required!" });
       return;
     }
 
-    const query = `INSERT INTO stores (store_name, store_code, store_channel, store_group, store_category, merchandiser, location, user_id) ) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    const query = `
+      INSERT INTO stores 
+        (store_name, store_code, store_channel, store_group, store_category, merchandiser, location, user_id) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
     const [result] = await db
       .promise()
       .query(query, [
         store_name,
         store_code,
         store_channel,
+        store_group,
         store_category,
         merchandiser,
         location,
-        user_id,
+        user.user_id,
       ]);
 
     res.status(201).json({

@@ -1,10 +1,23 @@
 import express from "express";
-import { createUser, getUsers, loginUser } from "../controllers/userController";
+import {
+  createUser,
+  getUsers,
+  loginUser,
+  updateUserPassword,
+} from "../controllers/userController";
+import middleware from "../utils/middleware";
 const router = express.Router();
 
 router.get("/", getUsers);
 router.post("/", createUser);
 router.post("/login", loginUser);
+router.put(
+  "/update-password",
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  updateUserPassword
+);
 
 export default router;
 //middleware.tokenExtractor, middleware.authenticateToken, middleware.userExtractor,

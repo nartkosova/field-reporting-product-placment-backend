@@ -7,22 +7,51 @@ export const createPodravkaFacing = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { user_id, store_id, product_id, category, facings_count } = req.body;
-    if (!user_id || !store_id || !product_id || !category || !facings_count) {
-      res.status(400).json({ error: "All fields are required!" });
+    const tokenUserId = req.user?.user_id;
+
+    if ("user_id" in req.body) {
+      const payloadUserId = req.body.user_id;
+
+      if (payloadUserId !== tokenUserId) {
+        res.status(401).json({
+          error: "You are not authorized to submit facings for another user.",
+        });
+        return;
+      }
+
+      res.status(403).json({
+        error: "Manual assignment of user_id is not allowed.",
+      });
       return;
     }
-    const query =
-      "INSERT INTO podravka_facings (user_id, store_id, product_id, category, facings_count) VALUES (?, ?, ?, ?, ?)";
+
+    const { store_id, product_id, category, facings_count } = req.body;
+
+    if (
+      !tokenUserId ||
+      !store_id ||
+      !product_id ||
+      !category ||
+      facings_count == null
+    ) {
+      res.status(400).json({ error: "All fields are required!" });
+    }
+
+    const query = `
+      INSERT INTO podravka_facings 
+      (user_id, store_id, product_id, category, facings_count) 
+      VALUES (?, ?, ?, ?, ?)`;
+
     const [result] = await db
       .promise()
       .query<OkPacket>(query, [
-        user_id,
+        tokenUserId,
         store_id,
         product_id,
         category,
         facings_count,
       ]);
+
     res.status(201).json({
       id: result.insertId,
       message: "Podravka facing added successfully!",
@@ -47,63 +76,15 @@ export const getAllPodravkaFacings = async (
   }
 };
 
-export const createCategoryFacing = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  try {
-    const {
-      user_id,
-      store_id,
-      category,
-      total_facings,
-      competitor_total_facings,
-      report_date,
-    } = req.body;
-
-    if (
-      !user_id ||
-      !store_id ||
-      !category ||
-      !total_facings ||
-      !competitor_total_facings ||
-      !report_date
-    ) {
-      res.status(400).json({ error: "All fields are required!" });
-      return;
-    }
-
-    const query = `
-        INSERT INTO podravka_category_facings 
-        (user_id, store_id, category, total_facings, competitor_total_facings,report_date)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `;
-
-    const [result] = await db
-      .promise()
-      .query<OkPacket>(query, [
-        user_id,
-        store_id,
-        category,
-        total_facings,
-        competitor_total_facings,
-        report_date,
-      ]);
-
-    res.status(201).json({
-      id: result.insertId,
-      message: "Category facing added successfully!",
-    });
-  } catch (error) {
-    console.error("Error adding category facing:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
-
 export const createCompetitorFacing = async (req: Request, res: Response) => {
   try {
-    const { user_id, store_id, competitor_id, category, facings_count } =
-      req.body;
+    if ("user_id" in req.body) {
+      res.status(403).json({
+        error: "Manual assignment of user_id is not allowed",
+      });
+    }
+    const user_id = req.user?.user_id;
+    const { store_id, competitor_id, category, facings_count } = req.body;
     if (
       !user_id ||
       !store_id ||
@@ -250,16 +231,35 @@ export const batchCreatePodravkaFacings = async (
   res: Response
 ): Promise<void> => {
   try {
-    const facings = req.body; // expecting an array
+    const user_id = req.user?.user_id;
+    const facings = req.body;
+
+    if (!user_id) {
+      res.status(401).json({
+        error: "Unauthorized.",
+      });
+      return;
+    }
 
     if (!Array.isArray(facings) || facings.length === 0) {
       res.status(400).json({ error: "Facings array is required!" });
       return;
     }
 
-    // Validate each facing (basic check)
     for (const facing of facings) {
-      const { user_id, store_id, product_id, category, facings_count } = facing;
+      const {
+        user_id: payloadUserId,
+        store_id,
+        product_id,
+        category,
+        facings_count,
+      } = facing;
+      if (payloadUserId !== user_id) {
+        res.status(403).json({
+          error: "You are not authorized to submit facings for another user.",
+        });
+        return;
+      }
       if (
         !user_id ||
         !store_id ||
@@ -299,8 +299,14 @@ export const batchCreatePodravkaFacings = async (
 export const batchCreateCompetitorFacings = async (
   req: Request,
   res: Response
-) => {
+): Promise<void> => {
+  const user_id = req.user?.user_id;
   const facings = req.body;
+
+  if (!user_id) {
+    res.status(401).json({ error: "Unauthorized." });
+    return;
+  }
 
   if (!Array.isArray(facings) || facings.length === 0) {
     res.status(400).json({ error: "Facings array is required" });
@@ -314,7 +320,7 @@ export const batchCreateCompetitorFacings = async (
 
     for (const facing of facings) {
       const {
-        user_id,
+        user_id: payloadUserId,
         store_id,
         competitor_id,
         category,
@@ -322,17 +328,36 @@ export const batchCreateCompetitorFacings = async (
         name,
       } = facing;
 
-      if (!user_id || !store_id || !category || facings_count == null) {
-        throw new Error("Missing required facing fields");
+      if (payloadUserId !== undefined && payloadUserId !== user_id) {
+        res.status(403).json({
+          error: "You are not authorized to submit facings for another user.",
+        });
+        await connection.rollback();
+        connection.release();
+        return;
+      }
+
+      if (!store_id || !category || facings_count == null) {
+        res.status(400).json({
+          error:
+            "Each facing must include store_id, category, and facings_count.",
+        });
+        await connection.rollback();
+        connection.release();
+        return;
       }
 
       if (!competitor_id && !name) {
-        throw new Error("Either competitor_id or name is required");
+        res.status(400).json({
+          error: "Each facing must include either competitor_id or brand name.",
+        });
+        await connection.rollback();
+        connection.release();
+        return;
       }
 
       // If competitor_id is missing but name is provided
       if (!competitor_id && name) {
-        // Check if brand already exists
         const [existingBrands] = await connection.query<any[]>(
           "SELECT competitor_id FROM competitor_brands WHERE LOWER(brand_name) = LOWER(?)",
           [name]
@@ -341,7 +366,6 @@ export const batchCreateCompetitorFacings = async (
         if (existingBrands.length > 0) {
           facing.competitor_id = existingBrands[0].competitor_id;
         } else {
-          // Insert new brand
           const [brandResult] = await connection.query<OkPacket>(
             "INSERT INTO competitor_brands (brand_name) VALUES (?)",
             [name]
@@ -349,9 +373,12 @@ export const batchCreateCompetitorFacings = async (
           facing.competitor_id = brandResult.insertId;
         }
       }
+
+      // enforce user_id
+      facing.user_id = user_id;
     }
 
-    // Prepare bulk insert values after resolving competitor_id
+    // Final values array using enforced user_id
     const values = facings.map((facing) => [
       facing.user_id,
       facing.store_id,
@@ -362,13 +389,12 @@ export const batchCreateCompetitorFacings = async (
 
     const insertFacingsQuery = `
       INSERT INTO competitor_facings 
-        (user_id, store_id, competitor_id, category, facings_count)
-      VALUES ?
-    `;
+      (user_id, store_id, competitor_id, category, facings_count)
+      VALUES ?`;
 
     await connection.query(insertFacingsQuery, [values]);
-
     await connection.commit();
+
     res
       .status(201)
       .json({ message: "Competitor facings batch created successfully!" });
