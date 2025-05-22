@@ -17,7 +17,7 @@ interface RequestBody {
   customName?: string;
 }
 
-interface Request {
+interface RequestFile {
   body: RequestBody;
 }
 
