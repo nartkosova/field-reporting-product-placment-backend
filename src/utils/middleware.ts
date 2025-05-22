@@ -124,6 +124,17 @@ const middleware = {
       res.status(500).json({ error: "Internal Server Error" });
     }
   },
+  authorizeRole: (roles: string[]) => {
+    return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+      if (!req.user || !roles.includes(req.user.role)) {
+        res
+          .status(403)
+          .json({ error: "Access denied: insufficient permissions" });
+        return;
+      }
+      next();
+    };
+  },
 };
 
 export default middleware;

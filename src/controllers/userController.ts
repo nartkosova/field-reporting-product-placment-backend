@@ -54,6 +54,7 @@ export const loginUser = (req: Request, res: Response): void => {
 
   const query = "SELECT * FROM users WHERE user = ?";
   db.query(query, [user], (err, results: any) => {
+    console.error("Results:", err);
     if (err) return res.status(500).json({ error: "Database error" });
     if (results.length === 0)
       return res.status(401).json({ error: "Fjalkalimi esht gabim" });

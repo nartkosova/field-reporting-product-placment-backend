@@ -16,6 +16,7 @@ router.put(
   middleware.tokenExtractor,
   middleware.authenticateToken,
   middleware.userExtractor,
+  middleware.authorizeRole(["admin", "employee"]),
   updateUserPassword
 );
 
