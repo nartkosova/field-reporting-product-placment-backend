@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import db from "../models/db";
 import { OkPacket, RowDataPacket } from "mysql2";
+import { v4 as uuidv4 } from "uuid";
 
 export const createPodravkaFacing = async (
   req: Request,
@@ -245,6 +246,7 @@ export const batchCreatePodravkaFacings = async (
       res.status(400).json({ error: "Facings array is required!" });
       return;
     }
+    const batchId = uuidv4();
 
     for (const facing of facings) {
       const {
@@ -280,10 +282,11 @@ export const batchCreatePodravkaFacings = async (
       f.product_id,
       f.category,
       f.facings_count,
+      batchId,
     ]);
 
     const query =
-      "INSERT INTO podravka_facings (user_id, store_id, product_id, category, facings_count) VALUES ?";
+      "INSERT INTO podravka_facings (user_id, store_id, product_id, category, facings_count, batch_id) VALUES ?";
 
     const [result] = await db.promise().query<OkPacket>(query, [values]);
 
@@ -296,6 +299,7 @@ export const batchCreatePodravkaFacings = async (
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
 export const batchCreateCompetitorFacings = async (
   req: Request,
   res: Response
@@ -404,5 +408,140 @@ export const batchCreateCompetitorFacings = async (
     res.status(500).json({ error: "Internal server error" });
   } finally {
     connection.release();
+  }
+};
+
+export const updatePodravkaFacingsBatch = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const user_id = req.user?.user_id;
+    const facings = req.body?.facings;
+    const batchId = req.body?.batchId;
+
+    if (!user_id) {
+      res.status(401).json({ error: "Unauthorized." });
+      return;
+    }
+
+    if (!batchId || !Array.isArray(facings) || facings.length === 0) {
+      res
+        .status(400)
+        .json({ error: "batchId and facings array are required!" });
+      return;
+    }
+
+    for (const facing of facings) {
+      const { user_id: payloadUserId, product_id, facings_count } = facing;
+
+      if (payloadUserId !== user_id) {
+        res.status(403).json({
+          error: "You are not authorized to update facings for another user.",
+        });
+        return;
+      }
+
+      if (!product_id || facings_count == null) {
+        res.status(400).json({
+          error: "Each facing must have product_id and facings_count!",
+        });
+        return;
+      }
+    }
+
+    const updatePromises = facings.map((f) =>
+      db.promise().query(
+        `UPDATE podravka_facings 
+           SET facings_count = ? 
+           WHERE batch_id = ? AND product_id = ? AND user_id = ?`,
+        [f.facings_count, batchId, f.product_id, user_id]
+      )
+    );
+
+    await Promise.all(updatePromises);
+
+    res.status(200).json({
+      message: "Facings u perditsuan me sukses!",
+    });
+  } catch (error) {
+    console.error("Error updating facings batch:", error);
+    res.status(500).json({ error: "Error ne server" });
+  }
+};
+
+export const getPodravkaFacingsByBatchId = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { batchId } = req.params;
+    const user_id = req.user?.user_id;
+
+    if (!batchId) {
+      res.status(400).json({ error: "Batch ID is required." });
+      return;
+    }
+
+    const query = `
+SELECT 
+  pf.*,
+  u.user AS user,
+  s.store_name,
+  p.name AS name
+FROM podravka_facings pf
+JOIN users u ON pf.user_id = u.user_id
+JOIN stores s ON pf.store_id = s.store_id
+JOIN podravka_products p ON pf.product_id = p.product_id
+WHERE pf.batch_id = ?
+    `;
+
+    const [results] = await db
+      .promise()
+      .query<RowDataPacket[]>(query, [batchId, user_id]);
+
+    if (results.length === 0) {
+      res.status(404).json({ error: "No facings found for this batch ID." });
+      return;
+    }
+
+    res.json(results);
+  } catch (error) {
+    console.error("Error fetching facings by batch ID:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getUserPPLBatches = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const user_id = req.user?.user_id;
+
+    if (!user_id) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const query = `
+      SELECT 
+        pf.batch_id,
+        s.store_name,
+        pf.category,
+        DATE_FORMAT(pf.report_date, '%Y-%m-%d') as report_date,
+        COUNT(*) as product_count
+      FROM podravka_facings pf
+      JOIN stores s ON pf.store_id = s.store_id
+      WHERE pf.user_id = ?
+      GROUP BY pf.batch_id, pf.store_id, pf.category, pf.report_date
+      ORDER BY pf.report_date DESC
+    `;
+
+    const [rows] = await db.promise().query<RowDataPacket[]>(query, [user_id]);
+    res.json(rows);
+  } catch (error) {
+    console.error("Error fetching PPL batches:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 };

@@ -6,6 +6,9 @@ import {
   getFacingsWithCompetitors,
   batchCreatePodravkaFacings,
   batchCreateCompetitorFacings,
+  updatePodravkaFacingsBatch,
+  getPodravkaFacingsByBatchId,
+  getUserPPLBatches,
 } from "../controllers/facingsController";
 import middleware from "../utils/middleware";
 
@@ -40,6 +43,23 @@ router.get(
   "/with-competitors",
   middleware.authorizeRole(["admin"]),
   getFacingsWithCompetitors
+);
+router.put(
+  "/podravka-facing/batch",
+  middleware.authorizeRole(["admin", "employee"]),
+  updatePodravkaFacingsBatch
+);
+
+router.get(
+  "/podravka-facing/batch/:batchId",
+  middleware.authorizeRole(["admin", "employee"]),
+  getPodravkaFacingsByBatchId
+);
+
+router.get(
+  "/podravka-facing/user-batches",
+  middleware.authorizeRole(["admin", "employee"]),
+  getUserPPLBatches
 );
 
 export default router;
