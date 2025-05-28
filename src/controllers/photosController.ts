@@ -8,8 +8,7 @@ export const uploadReportPhoto = async (
 ): Promise<void> => {
   try {
     const tokenUserId = req.user?.user_id;
-    const { photo_type, category, store_id, photo_description, photo_stage } =
-      req.body;
+    const { photo_type, category, store_id, photo_description } = req.body;
 
     if (!req.file || !photo_type || !category || !store_id || !tokenUserId) {
       res.status(400).json({ error: "Missing required fields" });
@@ -26,19 +25,20 @@ export const uploadReportPhoto = async (
 
     const query = `
       INSERT INTO report_photos 
-        (photo_type, photo_url, photo_description, photo_stage, category, user_id, store_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+        (photo_type, photo_url, photo_description, category, user_id, store_id)
+      VALUES (?, ?, ?, ?, ?, ?)
     `;
 
-    await db.promise().execute(query, [
-      photo_type,
-      photoUrl,
-      photo_description || null,
-      photo_stage || "before", // Default if not specified
-      category,
-      tokenUserId,
-      store_id,
-    ]);
+    await db
+      .promise()
+      .execute(query, [
+        photo_type,
+        photoUrl,
+        photo_description || null,
+        category,
+        tokenUserId,
+        store_id,
+      ]);
 
     res.status(201).json({
       message: "Photo uploaded successfully",
@@ -58,7 +58,6 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
       rp.photo_type,
       rp.photo_url,
       rp.photo_description,
-      rp.photo_stage,
       rp.category,
       rp.user_id,
       u.user AS user,

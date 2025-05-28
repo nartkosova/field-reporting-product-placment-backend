@@ -110,6 +110,62 @@ export const createCompetitorBrand = async (
   }
 };
 
+export const updateCompetitorBrand = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || !user.user_id) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const { id } = req.params;
+    const { brand_name } = req.body;
+    if (!brand_name) {
+      res.status(400).json({ error: "Mungon emri!" });
+      return;
+    }
+    const query =
+      "UPDATE competitor_brands SET brand_name = ? WHERE brand_id = ?";
+    const [result] = await db
+      .promise()
+      .query<OkPacket>(query, [brand_name, id]);
+    if (result.affectedRows === 0) {
+      res.status(404).json({ error: "Konkurrenti nuk egziston" });
+      return;
+    }
+    res.json({ message: "Konkurrenca u perditsua me sukses" });
+  } catch (error) {
+    console.error("Error updating brand:", error);
+    res.status(500).json({ error: "Server Error" });
+  }
+};
+
+export const deleteCompetitorBrand = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || !user.user_id) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const { brand_id } = req.params;
+    const query = "DELETE FROM competitor_brands WHERE competitor_id = ?";
+    const [result] = await db.promise().query<OkPacket>(query, [brand_id]);
+    if (result.affectedRows === 0) {
+      res.status(404).json({ error: "Konkurrenti nuk egziston" });
+      return;
+    }
+    res.json({ message: "Konkurrenti u fshi me sukses" });
+  } catch (error) {
+    console.error("Error deleting brand:", error);
+    res.status(500).json({ error: "Server Error" });
+  }
+};
+
 export const getCompetitorBrands = async (
   req: Request,
   res: Response
@@ -148,6 +204,36 @@ export const getCompetitorBrandByName = async (
   } catch (error) {
     console.error("Error fetching brand:", error);
     res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const getCompetitorBrandById = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || !user.user_id) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    if ("created_by" in req.body && req.body.created_by !== user.user_id) {
+      res.status(403).json({
+        error: "Manual assignment of created_by is not allowed.",
+      });
+      return;
+    }
+    const { id } = req.params;
+    const query = "SELECT * FROM competitor_brands WHERE brand_id = ?";
+    const [brands] = await db.promise().query<RowDataPacket[]>(query, [id]);
+    if (brands.length === 0) {
+      res.status(404).json({ error: "Kompetitor nuk egziston" });
+      return;
+    }
+    res.json(brands[0]);
+  } catch (error) {
+    console.error("Error fetching brand:", error);
+    res.status(500).json({ error: "Server Error" });
   }
 };
 

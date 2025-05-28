@@ -16,11 +16,11 @@ export const createUser = async (
     const { user, password, role } = req.body;
     if (!user || !password) {
       res.status(400).json({
-        error: "All fields are required!",
+        error: "Mbush te gjitha fushat e nevojshme: user, password dhe role",
       });
     }
     if (password.length < 8) {
-      res.status(400).json({ error: "Password must be at least 8 characters" });
+      res.status(400).json({ error: "Fjalkalimi duhet te jet 8 shkronja" });
     }
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -33,12 +33,12 @@ export const createUser = async (
         if (err) return res.status(500).json({ error: err.message });
         res.status(201).json({
           id: result.insertId,
-          message: "User registered successfully!",
+          message: "User i ri u krijua me sukses",
         });
       }
     );
   } catch (error) {
-    res.status(500).json({ error: "Error registering user" });
+    res.status(500).json({ error: "Error ne server" });
   }
 };
 export const getUsers = (req: Request, res: Response): void => {
@@ -94,12 +94,12 @@ export const updateUserPassword = async (
       return;
     }
     if (!user_id || !newPassword) {
-      res.status(400).json({ error: "User ID and new password are required" });
+      res.status(400).json({ error: "User ID and new password are required" }); //update
       return;
     }
 
     if (newPassword.length < 8) {
-      res.status(400).json({ error: "Password must be at least 8 characters" });
+      res.status(400).json({ error: "Fjalkalimi duhet te jet 8 shkronja" });
       return;
     }
 
@@ -112,10 +112,10 @@ export const updateUserPassword = async (
       if (result.affectedRows === 0) {
         res.status(404).json({ error: "User not found" });
       } else {
-        res.json({ message: "Password updated successfully" });
+        res.json({ message: "Fjalkalimi u perditsua me sukses" });
       }
     });
   } catch (error) {
-    res.status(500).json({ error: "Error updating password" });
+    res.status(500).json({ error: "Error ne server" });
   }
 };

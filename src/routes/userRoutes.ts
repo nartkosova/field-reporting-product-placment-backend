@@ -8,8 +8,22 @@ import {
 import middleware from "../utils/middleware";
 const router = express.Router();
 
-router.get("/", getUsers);
-router.post("/", createUser);
+router.get(
+  "/",
+  getUsers,
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  middleware.authorizeRole(["admin", "employee"])
+);
+router.post(
+  "/",
+  createUser,
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  middleware.authorizeRole(["admin", "employee"])
+);
 router.post("/login", loginUser);
 router.put(
   "/update-password",

@@ -7,6 +7,8 @@ import {
   getCompetitorBrandByName,
   createCompetitorProduct,
   getCompetitorProducts,
+  getCompetitorBrandById,
+  deleteCompetitorBrand,
 } from "../controllers/productController";
 import middleware from "../utils/middleware";
 
@@ -20,8 +22,18 @@ router.post(
 router.get("/", middleware.authorizeRole(["admin", "employee"]), getProducts);
 router.post(
   "/competitor-brand",
-  middleware.authorizeRole(["admin", "employee"]),
+  middleware.authorizeRole(["admin"]),
   createCompetitorBrand
+);
+router.put(
+  "/competitor-brand/:brand_id",
+  middleware.authorizeRole(["admin"]),
+  createCompetitorBrand
+);
+router.delete(
+  "/competitor-brand/:brand_id",
+  middleware.authorizeRole(["admin"]),
+  deleteCompetitorBrand
 );
 router.get(
   "/competitor-brand",
@@ -33,9 +45,14 @@ router.get(
   middleware.authorizeRole(["admin", "employee"]),
   getCompetitorBrandByName
 );
+router.get(
+  "/competitor-brand/:brand_id",
+  middleware.authorizeRole(["admin", "employee"]),
+  getCompetitorBrandById
+);
 router.post(
   "/competitor",
-  middleware.authorizeRole(["admin", "employee"]),
+  middleware.authorizeRole(["admin"]),
   createCompetitorProduct
 );
 router.get(

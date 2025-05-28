@@ -9,6 +9,7 @@ import {
   updatePodravkaFacingsBatch,
   getPodravkaFacingsByBatchId,
   getUserPPLBatches,
+  deletePodravkaFacingBatch,
 } from "../controllers/facingsController";
 import middleware from "../utils/middleware";
 
@@ -49,7 +50,11 @@ router.put(
   middleware.authorizeRole(["admin", "employee"]),
   updatePodravkaFacingsBatch
 );
-
+router.delete(
+  "/podravka-facing/batch/:batchId",
+  middleware.authorizeRole(["admin", "employee"]),
+  deletePodravkaFacingBatch
+);
 router.get(
   "/podravka-facing/batch/:batchId",
   middleware.authorizeRole(["admin", "employee"]),

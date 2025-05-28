@@ -470,6 +470,45 @@ export const updatePodravkaFacingsBatch = async (
   }
 };
 
+export const deletePodravkaFacingBatch = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  console.log("DELETE route hit", req.params.batchId);
+  try {
+    const user_id = req.user?.user_id;
+    const batchId = req.params.batchId;
+
+    if (!user_id) {
+      res.status(401).json({ error: "Unauthorized." });
+      return;
+    }
+
+    if (!batchId) {
+      res.status(400).json({ error: "Batch ID is required." });
+      return;
+    }
+
+    const query = `
+      DELETE FROM podravka_facings 
+      WHERE batch_id = ? AND user_id = ?`;
+
+    const [result] = await db
+      .promise()
+      .query<OkPacket>(query, [batchId, user_id]);
+
+    if (result.affectedRows === 0) {
+      res.status(404).json({ error: "No facings found for this batch ID." });
+      return;
+    }
+
+    res.status(200).json({ message: "Facings batch deleted successfully!" });
+  } catch (error) {
+    console.error("Error deleting facings batch:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 export const getPodravkaFacingsByBatchId = async (
   req: Request,
   res: Response
@@ -533,7 +572,7 @@ export const getUserPPLBatches = async (
         COUNT(*) as product_count
       FROM podravka_facings pf
       JOIN stores s ON pf.store_id = s.store_id
-      WHERE pf.user_id = ?
+      WHERE pf.user_id = ? AND batch_id IS NOT NULL
       GROUP BY pf.batch_id, pf.store_id, pf.category, pf.report_date
       ORDER BY pf.report_date DESC
     `;
