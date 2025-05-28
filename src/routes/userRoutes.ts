@@ -10,19 +10,21 @@ const router = express.Router();
 
 router.get(
   "/",
-  getUsers,
   middleware.tokenExtractor,
   middleware.authenticateToken,
   middleware.userExtractor,
-  middleware.authorizeRole(["admin", "employee"])
+  middleware.authorizeRole(["admin", "employee"]),
+  middleware.rejectManualUserId,
+  getUsers
 );
 router.post(
   "/",
-  createUser,
   middleware.tokenExtractor,
   middleware.authenticateToken,
   middleware.userExtractor,
-  middleware.authorizeRole(["admin", "employee"])
+  middleware.authorizeRole(["admin", "employee"]),
+  middleware.rejectManualUserId,
+  createUser
 );
 router.post("/login", loginUser);
 router.put(
@@ -31,8 +33,8 @@ router.put(
   middleware.authenticateToken,
   middleware.userExtractor,
   middleware.authorizeRole(["admin", "employee"]),
+  middleware.rejectManualUserId,
   updateUserPassword
 );
 
 export default router;
-//middleware.tokenExtractor, middleware.authenticateToken, middleware.userExtractor,

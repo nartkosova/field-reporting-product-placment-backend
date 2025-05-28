@@ -22,6 +22,7 @@ app.use(
   middleware.tokenExtractor,
   middleware.authenticateToken,
   middleware.userExtractor,
+  middleware.rejectManualUserId,
   storeRoutes
 );
 app.use(
@@ -29,6 +30,7 @@ app.use(
   middleware.tokenExtractor,
   middleware.authenticateToken,
   middleware.userExtractor,
+  middleware.rejectManualUserId,
   productRoutes
 );
 app.use(
@@ -36,6 +38,7 @@ app.use(
   middleware.tokenExtractor,
   middleware.authenticateToken,
   middleware.userExtractor,
+  middleware.rejectManualUserId,
   facingsRoutes
 );
 app.use(
@@ -43,6 +46,7 @@ app.use(
   middleware.tokenExtractor,
   middleware.authenticateToken,
   middleware.userExtractor,
+  middleware.rejectManualUserId,
   priceRoutes
 );
 app.use(
@@ -50,6 +54,7 @@ app.use(
   middleware.tokenExtractor,
   middleware.authenticateToken,
   middleware.userExtractor,
+  middleware.rejectManualUserId,
   photoRoutes
 );
 app.use(middleware.unknownEndpoint);

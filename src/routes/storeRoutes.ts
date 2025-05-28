@@ -20,7 +20,7 @@ router.get(
   middleware.authorizeRole(["employee", "admin"]),
   getStoreByUserId
 );
-router.post("/", middleware.authorizeRole(["admin", "employee"]), createStore);
+router.post("/", middleware.authorizeRole(["admin"]), createStore);
 router.get(
   "/:store_id/products",
   middleware.authorizeRole(["admin", "employee"]),

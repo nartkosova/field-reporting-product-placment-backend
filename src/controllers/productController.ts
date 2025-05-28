@@ -217,12 +217,6 @@ export const getCompetitorBrandById = async (
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    if ("created_by" in req.body && req.body.created_by !== user.user_id) {
-      res.status(403).json({
-        error: "Manual assignment of created_by is not allowed.",
-      });
-      return;
-    }
     const { id } = req.params;
     const query = "SELECT * FROM competitor_brands WHERE brand_id = ?";
     const [brands] = await db.promise().query<RowDataPacket[]>(query, [id]);

@@ -10,23 +10,8 @@ export const createPodravkaFacing = async (
   try {
     const tokenUserId = req.user?.user_id;
 
-    if ("user_id" in req.body) {
-      const payloadUserId = req.body.user_id;
-
-      if (payloadUserId !== tokenUserId) {
-        res.status(401).json({
-          error: "You are not authorized to submit facings for another user.",
-        });
-        return;
-      }
-
-      res.status(403).json({
-        error: "Manual assignment of user_id is not allowed.",
-      });
-      return;
-    }
-
-    const { store_id, product_id, category, facings_count } = req.body;
+    const { store_id, product_id, category, facings_count, batch_id } =
+      req.body;
 
     if (
       !tokenUserId ||
@@ -38,10 +23,30 @@ export const createPodravkaFacing = async (
       res.status(400).json({ error: "All fields are required!" });
     }
 
+    const [storeRows] = await db
+      .promise()
+      .query<RowDataPacket[]>("SELECT * FROM stores WHERE store_id = ?", [
+        store_id,
+      ]);
+
+    if (storeRows.length === 0) {
+      res.status(404).json({ error: "Store not found" });
+      return;
+    }
+
+    const store = storeRows[0];
+
+    if (store.user_id !== tokenUserId && req.user?.role !== "admin") {
+      res.status(403).json({
+        error: "You are not allowed to submit facings for this store",
+      });
+      return;
+    }
+
     const query = `
       INSERT INTO podravka_facings 
-      (user_id, store_id, product_id, category, facings_count) 
-      VALUES (?, ?, ?, ?, ?)`;
+      (user_id, store_id, product_id, category, facings_count, batch_id) 
+      VALUES (?, ?, ?, ?, ?, ?)`;
 
     const [result] = await db
       .promise()
@@ -51,6 +56,7 @@ export const createPodravkaFacing = async (
         product_id,
         category,
         facings_count,
+        batch_id || null,
       ]);
 
     res.status(201).json({
@@ -262,6 +268,27 @@ export const batchCreatePodravkaFacings = async (
         });
         return;
       }
+
+      const [storeRows] = await db
+        .promise()
+        .query<RowDataPacket[]>("SELECT * FROM stores WHERE store_id = ?", [
+          store_id,
+        ]);
+
+      if (storeRows.length === 0) {
+        res.status(404).json({ error: "Store not found" });
+        return;
+      }
+
+      const store = storeRows[0];
+
+      if (store.user_id !== user_id && req.user?.role !== "admin") {
+        res.status(403).json({
+          error: "You are not allowed to submit facings for this store",
+        });
+        return;
+      }
+
       if (
         !user_id ||
         !store_id ||

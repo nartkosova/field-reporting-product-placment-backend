@@ -124,6 +124,7 @@ const middleware = {
       res.status(500).json({ error: "Internal Server Error" });
     }
   },
+
   authorizeRole: (roles: string[]) => {
     return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       if (!req.user || !roles.includes(req.user.role)) {
@@ -134,6 +135,33 @@ const middleware = {
       }
       next();
     };
+  },
+
+  rejectManualUserId: (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) => {
+    const tokenUserId = req.user?.user_id;
+
+    if ("user_id" in req.body) {
+      const payloadUserId = req.body.user_id;
+
+      if (payloadUserId !== tokenUserId) {
+        res.status(401).json({
+          error: "You are not authorized to assign user_id manually.",
+        });
+        return;
+      }
+
+      res.status(403).json({
+        error: "Manual assignment of user_id is not allowed.",
+      });
+      return;
+    }
+
+    req.body.user_id = tokenUserId;
+    next();
   },
 };
 
