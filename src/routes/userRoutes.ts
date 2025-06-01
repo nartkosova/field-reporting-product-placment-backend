@@ -1,8 +1,11 @@
 import express from "express";
 import {
   createUser,
+  deleteUser,
+  getUserById,
   getUsers,
   loginUser,
+  updateUser,
   updateUserPassword,
 } from "../controllers/userController";
 import middleware from "../utils/middleware";
@@ -17,13 +20,30 @@ router.get(
   middleware.rejectManualUserId,
   getUsers
 );
+router.put(
+  "/:user_id",
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  middleware.authorizeRole(["admin"]),
+  middleware.rejectManualUserId,
+  updateUser
+);
+router.get(
+  "/:user_id",
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  middleware.authorizeRole(["admin"]),
+  middleware.rejectManualUserId,
+  getUserById
+);
 router.post(
   "/",
   middleware.tokenExtractor,
   middleware.authenticateToken,
   middleware.userExtractor,
-  middleware.authorizeRole(["admin", "employee"]),
-  middleware.rejectManualUserId,
+  middleware.authorizeRole(["admin"]),
   createUser
 );
 router.post("/login", loginUser);
@@ -36,5 +56,12 @@ router.put(
   middleware.rejectManualUserId,
   updateUserPassword
 );
-
+router.delete(
+  "/:user_id",
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  middleware.authorizeRole(["admin"]),
+  deleteUser
+);
 export default router;

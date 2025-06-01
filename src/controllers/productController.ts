@@ -120,17 +120,17 @@ export const updateCompetitorBrand = async (
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    const { id } = req.params;
+    const { competitor_id } = req.params;
     const { brand_name } = req.body;
     if (!brand_name) {
       res.status(400).json({ error: "Mungon emri!" });
       return;
     }
     const query =
-      "UPDATE competitor_brands SET brand_name = ? WHERE brand_id = ?";
+      "UPDATE competitor_brands SET brand_name = ? WHERE competitor_id = ?";
     const [result] = await db
       .promise()
-      .query<OkPacket>(query, [brand_name, id]);
+      .query<OkPacket>(query, [brand_name, competitor_id]);
     if (result.affectedRows === 0) {
       res.status(404).json({ error: "Konkurrenti nuk egziston" });
       return;
@@ -152,9 +152,22 @@ export const deleteCompetitorBrand = async (
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    const { brand_id } = req.params;
+    const { competitor_id } = req.params;
+    const checkQuery = `
+  SELECT COUNT(*) AS count FROM competitor_facings WHERE competitor_id = ?
+`;
+    const checkResult = await db.promise().query(checkQuery, [competitor_id]);
+    const count = (checkResult[0] as RowDataPacket[])[0].count;
+
+    if (count > 0) {
+      res.status(400).json({
+        error:
+          "Nuk mund të fshihet brandi sepse është i lidhur me të dhëna ekzistuese.",
+      });
+      return;
+    }
     const query = "DELETE FROM competitor_brands WHERE competitor_id = ?";
-    const [result] = await db.promise().query<OkPacket>(query, [brand_id]);
+    const [result] = await db.promise().query<OkPacket>(query, [competitor_id]);
     if (result.affectedRows === 0) {
       res.status(404).json({ error: "Konkurrenti nuk egziston" });
       return;
@@ -217,11 +230,13 @@ export const getCompetitorBrandById = async (
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    const { id } = req.params;
-    const query = "SELECT * FROM competitor_brands WHERE brand_id = ?";
-    const [brands] = await db.promise().query<RowDataPacket[]>(query, [id]);
+    const { competitor_id } = req.params;
+    const query = "SELECT * FROM competitor_brands WHERE competitor_id = ?";
+    const [brands] = await db
+      .promise()
+      .query<RowDataPacket[]>(query, [competitor_id]);
     if (brands.length === 0) {
-      res.status(404).json({ error: "Kompetitor nuk egziston" });
+      res.status(404).json({ error: "Kompetitori nuk egziston" });
       return;
     }
     res.json(brands[0]);
@@ -281,6 +296,53 @@ export const createCompetitorProduct = async (
   } catch (error) {
     console.error("Error adding competitor product:", error);
     res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const updateCompetitorProduct = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { product_id } = req.params;
+    const { name, category, weight } = req.body;
+    if (!name || !category) {
+      res.status(400).json({ error: "Emri dhe kategoria nevojiten" });
+      return;
+    }
+    const query =
+      "UPDATE competitor_products SET name = ?, category = ?, weight = ? WHERE competitor_product_id = ?";
+    const [result] = await db
+      .promise()
+      .query<OkPacket>(query, [name, category, weight ?? null, product_id]);
+    if (result.affectedRows === 0) {
+      res.status(404).json({ error: "Produkti i konkurrences nuk egziston" });
+      return;
+    }
+    res.json({ message: "Produkti i konkurrences u perditsua me sukses" });
+  } catch (error) {
+    console.error("Error updating competitor product:", error);
+    res.status(500).json({ error: "Server Error" });
+  }
+};
+
+export const deleteCompetitorProduct = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { product_id } = req.params;
+    const query =
+      "DELETE FROM competitor_products WHERE competitor_product_id = ?";
+    const [result] = await db.promise().query<OkPacket>(query, [product_id]);
+    if (result.affectedRows === 0) {
+      res.status(404).json({ error: "Produkti i konkurrences nuk egziston" });
+      return;
+    }
+    res.json({ message: "Produkti i konkurrences eshte fshire me sukses" });
+  } catch (error) {
+    console.error("Error deleting competitor product:", error);
+    res.status(500).json({ error: "Server Error" });
   }
 };
 

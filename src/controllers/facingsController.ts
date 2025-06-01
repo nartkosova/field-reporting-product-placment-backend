@@ -3,72 +3,6 @@ import db from "../models/db";
 import { OkPacket, RowDataPacket } from "mysql2";
 import { v4 as uuidv4 } from "uuid";
 
-export const createPodravkaFacing = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  try {
-    const tokenUserId = req.user?.user_id;
-
-    const { store_id, product_id, category, facings_count, batch_id } =
-      req.body;
-
-    if (
-      !tokenUserId ||
-      !store_id ||
-      !product_id ||
-      !category ||
-      facings_count == null
-    ) {
-      res.status(400).json({ error: "All fields are required!" });
-    }
-
-    const [storeRows] = await db
-      .promise()
-      .query<RowDataPacket[]>("SELECT * FROM stores WHERE store_id = ?", [
-        store_id,
-      ]);
-
-    if (storeRows.length === 0) {
-      res.status(404).json({ error: "Store not found" });
-      return;
-    }
-
-    const store = storeRows[0];
-
-    if (store.user_id !== tokenUserId && req.user?.role !== "admin") {
-      res.status(403).json({
-        error: "You are not allowed to submit facings for this store",
-      });
-      return;
-    }
-
-    const query = `
-      INSERT INTO podravka_facings 
-      (user_id, store_id, product_id, category, facings_count, batch_id) 
-      VALUES (?, ?, ?, ?, ?, ?)`;
-
-    const [result] = await db
-      .promise()
-      .query<OkPacket>(query, [
-        tokenUserId,
-        store_id,
-        product_id,
-        category,
-        facings_count,
-        batch_id || null,
-      ]);
-
-    res.status(201).json({
-      id: result.insertId,
-      message: "Podravka facing added successfully!",
-    });
-  } catch (error) {
-    console.error("Error adding Podravka facing:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
-
 export const getAllPodravkaFacings = async (
   req: Request,
   res: Response
@@ -79,46 +13,6 @@ export const getAllPodravkaFacings = async (
     res.json(podravka_facings);
   } catch (error) {
     console.error("Error fetching podravka facings:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
-
-export const createCompetitorFacing = async (req: Request, res: Response) => {
-  try {
-    if ("user_id" in req.body) {
-      res.status(403).json({
-        error: "Manual assignment of user_id is not allowed",
-      });
-    }
-    const user_id = req.user?.user_id;
-    const { store_id, competitor_id, category, facings_count } = req.body;
-    if (
-      !user_id ||
-      !store_id ||
-      !competitor_id ||
-      !category ||
-      !facings_count
-    ) {
-      res.status(400).json({ error: "All fields are required!" });
-      return;
-    }
-    const query =
-      "INSERT INTO competitor_facings (user_id, store_id, competitor_id, category, facings_count) VALUES (?, ?, ?, ?, ?)";
-    const [result] = await db
-      .promise()
-      .query<OkPacket>(query, [
-        user_id,
-        store_id,
-        competitor_id,
-        category,
-        facings_count,
-      ]);
-    res.status(201).json({
-      id: result.insertId,
-      message: "Competitor facing added successfully!",
-    });
-  } catch (error) {
-    console.error("Error adding competitor facing:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };

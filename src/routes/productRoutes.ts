@@ -9,6 +9,9 @@ import {
   getCompetitorProducts,
   getCompetitorBrandById,
   deleteCompetitorBrand,
+  updateCompetitorBrand,
+  updateCompetitorProduct,
+  deleteCompetitorProduct,
 } from "../controllers/productController";
 import middleware from "../utils/middleware";
 
@@ -26,12 +29,12 @@ router.post(
   createCompetitorBrand
 );
 router.put(
-  "/competitor-brand/:brand_id",
+  "/competitor-brand/:competitor_id",
   middleware.authorizeRole(["admin"]),
-  createCompetitorBrand
+  updateCompetitorBrand
 );
 router.delete(
-  "/competitor-brand/:brand_id",
+  "/competitor-brand/:competitor_id",
   middleware.authorizeRole(["admin"]),
   deleteCompetitorBrand
 );
@@ -46,7 +49,7 @@ router.get(
   getCompetitorBrandByName
 );
 router.get(
-  "/competitor-brand/:brand_id",
+  "/competitor-brand/id/:competitor_id",
   middleware.authorizeRole(["admin", "employee"]),
   getCompetitorBrandById
 );
@@ -54,6 +57,16 @@ router.post(
   "/competitor",
   middleware.authorizeRole(["admin"]),
   createCompetitorProduct
+);
+router.put(
+  "/competitor/:product_id",
+  middleware.authorizeRole(["admin"]),
+  updateCompetitorProduct
+);
+router.delete(
+  "/competitor/:product_id",
+  middleware.authorizeRole(["admin"]),
+  deleteCompetitorProduct
 );
 router.get(
   "/competitor",

@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { QueryError, RowDataPacket, OkPacket } from "mysql2";
 import dotenv from "dotenv";
+import { get } from "http";
 dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
@@ -18,9 +19,11 @@ export const createUser = async (
       res.status(400).json({
         error: "Mbush te gjitha fushat e nevojshme: user, password dhe role",
       });
+      return;
     }
     if (password.length < 8) {
       res.status(400).json({ error: "Fjalkalimi duhet te jet 8 shkronja" });
+      return;
     }
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -35,18 +38,95 @@ export const createUser = async (
           id: result.insertId,
           message: "User i ri u krijua me sukses",
         });
+        return;
       }
     );
   } catch (error) {
     res.status(500).json({ error: "Error ne server" });
   }
 };
+
+export const updateUser = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { user, password, role } = req.body;
+    const targetUserId = req.params.user_id;
+
+    if (!targetUserId || !user || !password || !role) {
+      res.status(400).json({
+        error: "User, password dhe role jane të nevojshme",
+      });
+      return;
+    }
+
+    if (password.length < 8) {
+      res
+        .status(400)
+        .json({ error: "Fjalëkalimi duhet të jetë së paku 8 shkronja" });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const query =
+      "UPDATE users SET user = ?, password = ?, role = ? WHERE user_id = ?";
+    db.query<OkPacket>(
+      query,
+      [user, hashedPassword, role, targetUserId],
+      (err: QueryError | null, result) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        if (result.affectedRows === 0) {
+          res.status(404).json({ error: "Përdoruesi nuk u gjet" });
+          return;
+        }
+        res.json({ message: "Përdoruesi u përditësua me sukses" });
+      }
+    );
+  } catch (error) {
+    console.error("Server error:", error);
+    res.status(500).json({ error: "Gabim në server" });
+  }
+};
+
+export const getUserById = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const user_id = req.params.user_id;
+  if (!user_id) {
+    res.status(400).json({ error: "User ID eshte i nevojshem" });
+    return;
+  }
+  const query = "SELECT user, user_id, role FROM users WHERE user_id = ?";
+  db.query<RowDataPacket[]>(
+    query,
+    [user_id],
+    (err: QueryError | null, results) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (results.length === 0) {
+        res.status(404).json({ error: "User nuk egziston" });
+        return;
+      }
+      res.json(results[0]);
+    }
+  );
+};
+
 export const getUsers = (req: Request, res: Response): void => {
-  const query = "SELECT user, user_id FROM users";
+  const query = "SELECT * FROM users";
 
   db.query<RowDataPacket[]>(query, (err: QueryError | null, results) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(results);
+    return;
   });
 };
 export const loginUser = (req: Request, res: Response): void => {
@@ -87,12 +167,7 @@ export const updateUserPassword = async (
   try {
     const { newPassword } = req.body;
     const user_id = req.user?.user_id;
-    if ("user_id" in req.body) {
-      res
-        .status(403)
-        .json({ error: "Manual user_id assignment is not allowed" });
-      return;
-    }
+
     if (!user_id || !newPassword) {
       res.status(400).json({ error: "User ID and new password are required" }); //update
       return;
@@ -118,4 +193,32 @@ export const updateUserPassword = async (
   } catch (error) {
     res.status(500).json({ error: "Error ne server" });
   }
+};
+
+export const deleteUser = (req: Request, res: Response): void => {
+  const targetUserId = Number(req.params.user_id);
+  const loggedInUserId = req.user?.user_id;
+
+  if (!targetUserId) {
+    res.status(400).json({ error: "User ID është i nevojshëm" });
+    return;
+  }
+
+  if (targetUserId === loggedInUserId) {
+    res.status(403).json({
+      error: "Nuk mund të fshini llogarinë tuaj ndërkohë që jeni të kyçur",
+    });
+    return;
+  }
+
+  const query = "DELETE FROM users WHERE user_id = ?";
+  db.query<OkPacket>(query, [targetUserId], (err, result) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    if (result.affectedRows === 0) {
+      res.status(404).json({ error: "Përdoruesi nuk u gjet" });
+    } else {
+      res.json({ message: "Përdoruesi u fshi me sukses" });
+    }
+  });
 };
