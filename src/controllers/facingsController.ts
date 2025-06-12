@@ -395,7 +395,6 @@ export const deletePodravkaFacingBatch = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  console.log("DELETE route hit", req.params.batchId);
   try {
     const user_id = req.user?.user_id;
     const batchId = req.params.batchId;

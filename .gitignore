@@ -2,3 +2,5 @@
 node_modules
 .sql
 dump.sql
+dist
+podravka_backup.sql

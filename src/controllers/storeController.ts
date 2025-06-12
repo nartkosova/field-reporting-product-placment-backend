@@ -3,6 +3,19 @@ import db from "../models/db";
 import { QueryError, RowDataPacket } from "mysql2";
 export const getStores = async (req: Request, res: Response): Promise<void> => {
   try {
+    const query = "SELECT * FROM stores ORDER BY store_name ASC";
+    const [stores] = await db.promise().query<RowDataPacket[]>(query);
+    res.json(stores);
+  } catch (error) {
+    console.error("Error fetching stores:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+export const getStoresWithUserId = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
     const query = "SELECT * FROM stores WHERE user_id IS NOT NULL";
     const [stores] = await db.promise().query<RowDataPacket[]>(query);
     res.json(stores);
@@ -75,9 +88,8 @@ export const createStore = async (
       store_name,
       store_code,
       store_channel,
-      store_group,
       store_category,
-      merchandiser,
+      sales_rep,
       location,
     } = req.body;
 
@@ -87,20 +99,12 @@ export const createStore = async (
       return;
     }
 
-    if ("user_id" in req.body && req.body.user_id !== user.user_id) {
-      res
-        .status(403)
-        .json({ error: "Manual assignment of user_id is not allowed." });
-      return;
-    }
-
     if (
       !store_name ||
       !store_code ||
       !store_channel ||
-      !store_group ||
       !store_category ||
-      !merchandiser ||
+      !sales_rep ||
       !location
     ) {
       res.status(400).json({ error: "All fields are required!" });
@@ -109,8 +113,8 @@ export const createStore = async (
 
     const query = `
       INSERT INTO stores 
-        (store_name, store_code, store_channel, store_group, store_category, merchandiser, location, user_id) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (store_name, store_code, store_channel, store_category, user_id, sales_rep, location) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
     const [result] = await db
@@ -119,11 +123,10 @@ export const createStore = async (
         store_name,
         store_code,
         store_channel,
-        store_group,
         store_category,
-        merchandiser,
-        location,
         user.user_id,
+        sales_rep,
+        location,
       ]);
 
     res.status(201).json({
@@ -176,6 +179,89 @@ export const getStoreProducts = async (
     res.json(products);
   } catch (error) {
     console.error("Error fetching store products:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const updateStore = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { store_id } = req.params;
+    const {
+      store_name,
+      store_code,
+      store_channel,
+      store_category,
+      sales_rep,
+      location,
+      user_id,
+    } = req.body;
+    const user = req.user;
+    if (!user || !user.user_id) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    if (
+      !store_name ||
+      !store_code ||
+      !store_channel ||
+      !store_category ||
+      !sales_rep ||
+      !location ||
+      !user_id
+    ) {
+      res.status(400).json({ error: "All fields are required!" });
+      return;
+    }
+    const query = `
+      UPDATE stores
+      SET store_name = ?, store_code = ?, store_channel = ?,
+          store_category = ?, sales_rep = ?, location = ?, user_id = ?
+      WHERE store_id = ?
+    `;
+    const [result] = await db
+      .promise()
+      .query(query, [
+        store_name,
+        store_code,
+        store_channel,
+        store_category,
+        sales_rep,
+        location,
+        user_id,
+        store_id,
+      ]);
+    if ((result as any).affectedRows === 0) {
+      res.status(404).json({ error: "Dyqani nuk ekziston" });
+      return;
+    }
+    res.status(200).json({ message: "Dyqani u perditsua me sukses" });
+  } catch (error) {
+    console.error("Error updating store:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+export const deleteStore = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { store_id } = req.params;
+
+    const query = `DELETE FROM stores WHERE store_id = ?`;
+    const [result] = await db.promise().query(query, [store_id]);
+
+    if ((result as any).affectedRows === 0) {
+      res.status(404).json({ error: "Store not found" });
+      return;
+    }
+
+    res.status(200).json({ message: "Store deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting store:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };

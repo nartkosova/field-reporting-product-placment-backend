@@ -5,11 +5,19 @@ import {
   createStore,
   getStoreProducts,
   getStoreByUserId,
+  deleteStore,
+  updateStore,
+  getStoresWithUserId,
 } from "../controllers/storeController";
 import middleware from "../utils/middleware";
 const router = express.Router();
 
 router.get("/", middleware.authorizeRole(["admin", "employee"]), getStores);
+router.get(
+  "/user",
+  middleware.authorizeRole(["admin", "employee"]),
+  getStoresWithUserId
+);
 router.get(
   "/:store_id",
   middleware.authorizeRole(["admin", "employee"]),
@@ -26,5 +34,7 @@ router.get(
   middleware.authorizeRole(["admin", "employee"]),
   getStoreProducts
 );
+router.put("/:store_id", middleware.authorizeRole(["admin"]), updateStore);
+router.delete("/:store_id", middleware.authorizeRole(["admin"]), deleteStore);
 
 export default router;

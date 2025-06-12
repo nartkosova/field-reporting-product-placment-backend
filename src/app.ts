@@ -22,7 +22,6 @@ app.use(
   middleware.tokenExtractor,
   middleware.authenticateToken,
   middleware.userExtractor,
-  middleware.rejectManualUserId,
   storeRoutes
 );
 app.use(

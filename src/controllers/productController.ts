@@ -369,13 +369,13 @@ export const getCompetitorProducts = async (
     const [products] = await db.promise().query<RowDataPacket[]>(query, params);
 
     if (!products.length) {
-      res.status(404).json({ error: "No competitor products found" });
+      res.status(404).json({ error: "Nuk ka produkte te konkurrences!" });
       return;
     }
 
     res.status(200).json(products);
   } catch (error) {
     console.error("Error fetching competitor products:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ error: "Server Error" });
   }
 };
