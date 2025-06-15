@@ -220,6 +220,36 @@ export const getCompetitorBrandByName = async (
   }
 };
 
+export const getCompetitorByCategory = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { category } = req.params;
+    if (!category) {
+      res.status(400).json({ error: "Category is required" });
+      return;
+    }
+    const query = `
+      SELECT cb.competitor_id, cb.brand_name
+      FROM competitor_brands cb
+      JOIN competitor_brand_categories cbc ON cb.competitor_id = cbc.competitor_id
+      WHERE cbc.category = ?
+    `;
+    const [competitors] = await db
+      .promise()
+      .query<RowDataPacket[]>(query, [category]);
+    if (competitors.length === 0) {
+      res.status(404).json({ error: "No competitors found for this category" });
+      return;
+    }
+    res.json(competitors);
+  } catch (error) {
+    console.error("Error fetching competitors by category:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
 export const getCompetitorBrandById = async (
   req: Request,
   res: Response

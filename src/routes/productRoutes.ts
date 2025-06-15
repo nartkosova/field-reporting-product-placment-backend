@@ -12,6 +12,7 @@ import {
   updateCompetitorBrand,
   updateCompetitorProduct,
   deleteCompetitorProduct,
+  getCompetitorByCategory,
 } from "../controllers/productController";
 import middleware from "../utils/middleware";
 
@@ -52,6 +53,11 @@ router.get(
   "/competitor-brand/id/:competitor_id",
   middleware.authorizeRole(["admin", "employee"]),
   getCompetitorBrandById
+);
+router.get(
+  "/competitor/category/:category",
+  middleware.authorizeRole(["admin", "employee"]),
+  getCompetitorByCategory
 );
 router.post(
   "/competitor",
