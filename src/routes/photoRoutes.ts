@@ -13,6 +13,17 @@ const { upload } = require("../utils/cloudinary");
 
 const router = express.Router();
 
+router.get("/", middleware.authorizeRole(["admin"]), getAllReportPhotos);
+router.get(
+  "/user",
+  middleware.authorizeRole(["admin", "employee"]),
+  getReportPhotosByUserId
+);
+router.get(
+  "/:photo_id",
+  middleware.authorizeRole(["admin", "employee"]),
+  getReportPhotoByPhotoId
+);
 router.post(
   "/upload-photo",
   middleware.authorizeRole(["employee"]),
@@ -24,29 +35,14 @@ router.post(
   middleware.authorizeRole(["admin"]),
   bulkDeletePhotos
 );
-router.get(
-  "/report-photos",
-  middleware.authorizeRole(["admin"]),
-  getAllReportPhotos
-);
-router.get(
-  "/report-photos/user",
-  middleware.authorizeRole(["admin", "employee"]),
-  getReportPhotosByUserId
-);
-router.get(
-  "/report-photos/:photo_id",
-  middleware.authorizeRole(["admin", "employee"]),
-  getReportPhotoByPhotoId
-);
 router.put(
-  "/report-photos/:photo_id",
+  "/:photo_id",
   middleware.authorizeRole(["admin", "employee"]),
   upload.single("photo"),
   updateReportPhoto
 );
 router.delete(
-  "/report-photos/:photo_id",
+  "/:photo_id",
   middleware.authorizeRole(["admin", "employee"]),
   deleteReportPhoto
 );

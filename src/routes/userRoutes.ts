@@ -20,15 +20,6 @@ router.get(
   middleware.rejectManualUserId,
   getUsers
 );
-router.put(
-  "/:user_id",
-  middleware.tokenExtractor,
-  middleware.authenticateToken,
-  middleware.userExtractor,
-  middleware.authorizeRole(["admin"]),
-  middleware.rejectManualUserId,
-  updateUser
-);
 router.get(
   "/:user_id",
   middleware.tokenExtractor,
@@ -47,6 +38,15 @@ router.post(
   createUser
 );
 router.post("/login", loginUser);
+router.put(
+  "/:user_id",
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  middleware.authorizeRole(["admin"]),
+  middleware.rejectManualUserId,
+  updateUser
+);
 router.put(
   "/update-password",
   middleware.tokenExtractor,

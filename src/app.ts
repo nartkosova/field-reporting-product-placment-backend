@@ -3,13 +3,18 @@ import bodyParser from "body-parser";
 import cors from "cors";
 import logger from "./utils/logger";
 import middleware from "./utils/middleware";
+
 import userRoutes from "./routes/userRoutes";
 import storeRoutes from "./routes/storeRoutes";
 import productRoutes from "./routes/productRoutes";
-import facingsRoutes from "./routes/facingsRoutes";
+import competitorFacingsRoutes from "./routes/facings_routes/competitorFacingRoutes";
+import podravkaFacingsRoutes from "./routes/facings_routes/podravkaFacingRoutes";
+import competitorRoutes from "./routes/competitorRoutes";
 import priceRoutes from "./routes/priceRoutes";
 import photoRoutes from "./routes/photoRoutes";
+
 import path from "path";
+
 const app = express();
 
 app.use(cors());
@@ -38,7 +43,16 @@ app.use(
   middleware.authenticateToken,
   middleware.userExtractor,
   middleware.rejectManualUserId,
-  facingsRoutes
+  competitorFacingsRoutes,
+  podravkaFacingsRoutes
+);
+app.use(
+  "/api/competitor-brands",
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  middleware.rejectManualUserId,
+  competitorRoutes
 );
 app.use(
   "/api/price-checks",

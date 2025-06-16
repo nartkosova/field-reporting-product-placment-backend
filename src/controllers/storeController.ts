@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import db from "../models/db";
 import { QueryError, RowDataPacket } from "mysql2";
+
 export const getStores = async (req: Request, res: Response): Promise<void> => {
   try {
     const query = "SELECT * FROM stores ORDER BY store_name ASC";
@@ -24,7 +25,6 @@ export const getStoresWithUserId = async (
     res.status(500).json({ error: "Internal server error" });
   }
 };
-
 export const getStoreById = async (
   req: Request,
   res: Response
@@ -78,7 +78,6 @@ export const getStoreByUserId = async (
     res.status(500).json({ error: "Internal server error" });
   }
 };
-
 export const createStore = async (
   req: Request,
   res: Response
@@ -138,7 +137,6 @@ export const createStore = async (
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
-
 export const getStoreProducts = async (
   req: Request,
   res: Response
