@@ -10,16 +10,24 @@ export const uploadReportPhoto = async (
 ): Promise<void> => {
   try {
     const tokenUserId = req.user?.user_id;
-    const { photo_type, category, store_id, photo_description } = req.body;
+    const { photo_type, category, store_id, company, photo_description } =
+      req.body;
 
-    if (!req.file || !photo_type || !category || !store_id || !tokenUserId) {
-      res.status(400).json({ error: "Missing required fields" });
+    if (
+      !req.file ||
+      !photo_type ||
+      !category ||
+      !store_id ||
+      !tokenUserId ||
+      !company
+    ) {
+      res.status(400).json({ error: "Duhet te mbushen te gjitha fushat!" });
       return;
     }
 
     const file = req.file as Express.Multer.File;
     if (!file || !file.path) {
-      res.status(400).json({ error: "Photo upload failed" });
+      res.status(400).json({ error: "Postimi i fotos deshtoj" });
       return;
     }
 
@@ -27,8 +35,8 @@ export const uploadReportPhoto = async (
 
     const query = `
       INSERT INTO report_photos 
-        (photo_type, photo_url, photo_description, category, user_id, store_id)
-      VALUES (?, ?, ?, ?, ?, ?)
+        (photo_type, photo_url, photo_description, category, company, user_id, store_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
     await db
@@ -38,6 +46,7 @@ export const uploadReportPhoto = async (
         photoUrl,
         photo_description || null,
         category,
+        company,
         tokenUserId,
         store_id,
       ]);
@@ -61,6 +70,7 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
       rp.photo_url,
       rp.photo_description,
       rp.category,
+      rp.company,
       rp.user_id,
       u.user AS user,
       rp.store_id,
@@ -145,6 +155,7 @@ export const getReportPhotosByUserId = async (
         rp.photo_url,
         rp.photo_description,
         rp.category,
+        rp.company,
         rp.user_id,
         u.user AS user,
         rp.store_id,

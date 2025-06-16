@@ -30,7 +30,7 @@ router.post(
   upload.single("photo"),
   uploadReportPhoto
 );
-router.post(
+router.delete(
   "/bulk-delete",
   middleware.authorizeRole(["admin"]),
   bulkDeletePhotos
