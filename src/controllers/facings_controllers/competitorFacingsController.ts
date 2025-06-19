@@ -119,7 +119,7 @@ export const getCompetitorFacingByUserId = async (
 ): Promise<void> => {
   const user_id = req.user?.user_id;
   if (!user_id) {
-    res.status(401).json({ error: "Unauthorized" });
+    res.status(401).json({ error: "Nuk jeni te autoreziaur" });
     return;
   }
   try {
@@ -203,7 +203,7 @@ export const batchCreateCompetitorFacings = async (
   const facings = req.body;
 
   if (!user_id) {
-    res.status(401).json({ error: "Unauthorized." });
+    res.status(401).json({ error: "Nuk jeni te autoreziaur." });
     return;
   }
 
@@ -318,7 +318,7 @@ export const updateCompetitorFacingBatch = async (
   const facings = req.body?.facings;
 
   if (!user_id) {
-    res.status(401).json({ error: "Unauthorized." });
+    res.status(401).json({ error: "Nuk jeni te autoreziaur." });
     return;
   }
 

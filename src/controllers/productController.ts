@@ -77,7 +77,7 @@ export const createProduct = async (
 
     const user = req.user; // from middleware
     if (!user || !user.user_id) {
-      res.status(401).json({ error: "Unauthorized" });
+      res.status(401).json({ error: "Nuk jeni te autoreziaur" });
       return;
     }
 
@@ -120,7 +120,7 @@ export const createCompetitorProduct = async (
   try {
     const user = req.user;
     if (!user || !user.user_id) {
-      res.status(401).json({ error: "Unauthorized" });
+      res.status(401).json({ error: "Nuk jeni te autoreziaur" });
       return;
     }
 

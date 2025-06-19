@@ -72,7 +72,9 @@ const middleware = {
     next: NextFunction
   ): void => {
     if (!req.token) {
-      res.status(401).json({ error: "Unauthorized: No Token Found" });
+      res
+        .status(401)
+        .json({ error: "Nuk jeni te autoreziaur: No Token Found" });
       return;
     }
 
@@ -104,7 +106,9 @@ const middleware = {
     next: NextFunction
   ) => {
     if (!req.user || !req.user.user_id) {
-      res.status(401).json({ error: "Unauthorized: No valid user found" });
+      res
+        .status(401)
+        .json({ error: "Nuk jeni te autoreziaur: No valid user found" });
     }
 
     try {

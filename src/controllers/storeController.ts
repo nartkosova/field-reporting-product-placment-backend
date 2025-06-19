@@ -9,7 +9,7 @@ export const getStores = async (req: Request, res: Response): Promise<void> => {
     res.json(stores);
   } catch (error) {
     console.error("Error fetching stores:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Server error" });
   }
 };
 export const getStoresWithUserId = async (
@@ -22,7 +22,7 @@ export const getStoresWithUserId = async (
     res.json(stores);
   } catch (error) {
     console.error("Error fetching stores:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Server error" });
   }
 };
 export const getStoreById = async (
@@ -37,14 +37,14 @@ export const getStoreById = async (
       .query<RowDataPacket[]>(query, [store_id]);
 
     if (stores.length === 0) {
-      res.status(404).json({ error: "Store not found" });
+      res.status(404).json({ error: "Shitorja nuk ekziston" });
       return;
     }
 
     res.json(stores[0]);
   } catch (error) {
     console.error("Error fetching store:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Server error" });
   }
 };
 export const getStoreNameById = async (
@@ -68,14 +68,16 @@ export const getStoreByUserId = async (
       .query<RowDataPacket[]>(query, [user_id]);
 
     if (stores.length === 0) {
-      res.status(404).json({ error: "User has no stores" });
+      res
+        .status(404)
+        .json({ error: "Perdoruesi nuk ka asnje shitore te caktuar" });
       return;
     }
 
     res.status(200).json(stores);
   } catch (error) {
     console.error("Error fetching store:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Server error" });
   }
 };
 export const createStore = async (
@@ -90,11 +92,12 @@ export const createStore = async (
       store_category,
       sales_rep,
       location,
+      user_id,
     } = req.body;
 
     const user = req.user;
     if (!user || !user.user_id) {
-      res.status(401).json({ error: "Unauthorized" });
+      res.status(401).json({ error: "Nuk jeni te autoreziaur" });
       return;
     }
 
@@ -104,9 +107,10 @@ export const createStore = async (
       !store_channel ||
       !store_category ||
       !sales_rep ||
-      !location
+      !location ||
+      !user_id
     ) {
-      res.status(400).json({ error: "All fields are required!" });
+      res.status(400).json({ error: "Të gjitha fushat janë të nevojshme!" });
       return;
     }
 
@@ -123,18 +127,18 @@ export const createStore = async (
         store_code,
         store_channel,
         store_category,
-        user.user_id,
+        user_id,
         sales_rep,
         location,
       ]);
 
     res.status(201).json({
       id: (result as any).insertId,
-      message: "Store created successfully!",
+      message: "Shitorja u krijua me sukses",
     });
   } catch (error) {
     console.error("Error creating store:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ error: "Server Error" });
   }
 };
 export const getStoreProducts = async (
@@ -150,7 +154,7 @@ export const getStoreProducts = async (
       .query<RowDataPacket[]>(storeQuery, [store_id]);
 
     if (storeResult.length === 0) {
-      res.status(404).json({ error: "Store not found" });
+      res.status(404).json({ error: "Shitorja nuk ekziston" });
       return;
     }
 
@@ -198,7 +202,7 @@ export const updateStore = async (
     } = req.body;
     const user = req.user;
     if (!user || !user.user_id) {
-      res.status(401).json({ error: "Unauthorized" });
+      res.status(401).json({ error: "Nuk jeni te autoreziaur" });
       return;
     }
     if (
@@ -210,7 +214,7 @@ export const updateStore = async (
       !location ||
       !user_id
     ) {
-      res.status(400).json({ error: "All fields are required!" });
+      res.status(400).json({ error: "Të gjitha fushat janë të nevojshme!" });
       return;
     }
     const query = `
@@ -232,10 +236,10 @@ export const updateStore = async (
         store_id,
       ]);
     if ((result as any).affectedRows === 0) {
-      res.status(404).json({ error: "Dyqani nuk ekziston" });
+      res.status(404).json({ error: "Shitorja nuk ekziston" });
       return;
     }
-    res.status(200).json({ message: "Dyqani u perditsua me sukses" });
+    res.status(200).json({ message: "Shitorja u perditsua me sukses" });
   } catch (error) {
     console.error("Error updating store:", error);
     res.status(500).json({ error: "Server error" });
@@ -253,13 +257,13 @@ export const deleteStore = async (
     const [result] = await db.promise().query(query, [store_id]);
 
     if ((result as any).affectedRows === 0) {
-      res.status(404).json({ error: "Store not found" });
+      res.status(404).json({ error: "Shitorja nuk ekziston" });
       return;
     }
 
-    res.status(200).json({ message: "Store deleted successfully." });
+    res.status(200).json({ message: "Shitorja u fshi me sukses." });
   } catch (error) {
     console.error("Error deleting store:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Server error" });
   }
 };

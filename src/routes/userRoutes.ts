@@ -9,6 +9,8 @@ import {
   updateUserPassword,
 } from "../controllers/userController";
 import middleware from "../utils/middleware";
+import { authLimiter, userCreationLimiter } from "../utils/rateLimiter";
+
 const router = express.Router();
 
 router.get(
@@ -31,13 +33,14 @@ router.get(
 );
 router.post(
   "/",
+  userCreationLimiter,
   middleware.tokenExtractor,
   middleware.authenticateToken,
   middleware.userExtractor,
   middleware.authorizeRole(["admin"]),
   createUser
 );
-router.post("/login", loginUser);
+router.post("/login", authLimiter, loginUser);
 router.put(
   "/:user_id",
   middleware.tokenExtractor,

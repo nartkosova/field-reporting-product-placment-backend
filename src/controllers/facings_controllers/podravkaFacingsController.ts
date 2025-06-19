@@ -25,7 +25,7 @@ export const getUserPPLBatches = async (
     const user_id = req.user?.user_id;
 
     if (!user_id) {
-      res.status(401).json({ error: "Unauthorized" });
+      res.status(401).json({ error: "Nuk jeni te autoreziaur" });
       return;
     }
 
@@ -61,7 +61,7 @@ export const batchCreatePodravkaFacings = async (
 
     if (!user_id) {
       res.status(401).json({
-        error: "Unauthorized.",
+        error: "Nuk jeni te autoreziaur.",
       });
       return;
     }
@@ -94,7 +94,7 @@ export const batchCreatePodravkaFacings = async (
         ]);
 
       if (storeRows.length === 0) {
-        res.status(404).json({ error: "Store not found" });
+        res.status(404).json({ error: "Shitorja nuk ekziston" });
         return;
       }
 
@@ -155,7 +155,7 @@ export const updatePodravkaFacingsBatch = async (
     const batchId = req.body?.batchId;
 
     if (!user_id) {
-      res.status(401).json({ error: "Unauthorized." });
+      res.status(401).json({ error: "Nuk jeni te autoreziaur." });
       return;
     }
 
@@ -213,7 +213,7 @@ export const deletePodravkaFacingBatch = async (
     const batchId = req.params.batchId;
 
     if (!user_id) {
-      res.status(401).json({ error: "Unauthorized." });
+      res.status(401).json({ error: "Nuk jeni te autoreziaur." });
       return;
     }
 

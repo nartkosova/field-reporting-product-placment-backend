@@ -63,27 +63,37 @@ export const uploadReportPhoto = async (
 
 export const getAllReportPhotos = async (req: Request, res: Response) => {
   try {
-    const query = `
-    SELECT
-      rp.photo_id,
-      rp.photo_type,
-      rp.photo_url,
-      rp.photo_description,
-      rp.category,
-      rp.company,
-      rp.user_id,
-      u.user AS user,
-      rp.store_id,
-      s.store_name,
-      rp.uploaded_at
-    FROM report_photos rp
-    JOIN users u ON rp.user_id = u.user_id
-    JOIN stores s ON rp.store_id = s.store_id
-    ORDER BY rp.uploaded_at DESC
-  `;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
 
-    const [results] = await db.promise().query(query);
-    res.json(results);
+    const query = `
+      SELECT
+        rp.photo_id,
+        rp.photo_type,
+        rp.photo_url,
+        rp.photo_description,
+        rp.category,
+        rp.company,
+        rp.user_id,
+        u.user AS user,
+        rp.store_id,
+        s.store_name,
+        rp.uploaded_at
+      FROM report_photos rp
+      JOIN users u ON rp.user_id = u.user_id
+      JOIN stores s ON rp.store_id = s.store_id
+      ORDER BY rp.uploaded_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [results] = await db.promise().query(query, [limit, offset]);
+
+    const [countResult] = await db
+      .promise()
+      .query("SELECT COUNT(*) AS total FROM report_photos");
+    const total = (countResult as any)[0]?.total || 0;
+
+    res.json({ data: results, total });
   } catch (err) {
     console.error("Error fetching report photos:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -189,7 +199,7 @@ export const getReportPhotoByPhotoId = async (
   }
 
   if (!user_id) {
-    res.status(401).json({ error: "Unauthorized" });
+    res.status(401).json({ error: "Nuk jeni te autoreziaur" });
     return;
   }
 

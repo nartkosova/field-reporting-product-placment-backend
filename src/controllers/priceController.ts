@@ -11,7 +11,7 @@ export const batchCreatePriceCheck = async (
     const prices = req.body;
 
     if (!user_id) {
-      res.status(401).json({ error: "Unauthorized." });
+      res.status(401).json({ error: "Nuk jeni te autoreziaur." });
       return;
     }
 

@@ -3,6 +3,8 @@ import bodyParser from "body-parser";
 import cors from "cors";
 import logger from "./utils/logger";
 import middleware from "./utils/middleware";
+import { generalLimiter } from "./utils/rateLimiter";
+import { helmetConfig } from "./utils/helmetConfig";
 
 import userRoutes from "./routes/userRoutes";
 import storeRoutes from "./routes/storeRoutes";
@@ -17,10 +19,14 @@ import path from "path";
 
 const app = express();
 
+// Security middleware
+app.use(helmetConfig);
 app.use(cors());
 app.use(express.static("dist"));
 app.use(bodyParser.json());
 app.use(logger);
+app.use(generalLimiter);
+
 app.use("/api/users", userRoutes);
 app.use(
   "/api/stores",

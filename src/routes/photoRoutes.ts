@@ -9,6 +9,7 @@ import {
   updateReportPhoto,
 } from "../controllers/photosController";
 import middleware from "../utils/middleware";
+import { uploadLimiter } from "../utils/rateLimiter";
 const { upload } = require("../utils/cloudinary");
 
 const router = express.Router();
@@ -26,6 +27,7 @@ router.get(
 );
 router.post(
   "/upload-photo",
+  uploadLimiter,
   middleware.authorizeRole(["employee"]),
   upload.single("photo"),
   uploadReportPhoto
@@ -37,6 +39,7 @@ router.delete(
 );
 router.put(
   "/:photo_id",
+  uploadLimiter,
   middleware.authorizeRole(["admin", "employee"]),
   upload.single("photo"),
   updateReportPhoto
