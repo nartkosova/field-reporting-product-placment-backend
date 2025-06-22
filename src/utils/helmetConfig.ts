@@ -1,4 +1,4 @@
-import helmet from 'helmet';
+import helmet from "helmet";
 
 export const helmetConfig = helmet({
   contentSecurityPolicy: {
@@ -16,7 +16,7 @@ export const helmetConfig = helmet({
   },
   crossOriginEmbedderPolicy: true,
   crossOriginOpenerPolicy: true,
-  crossOriginResourcePolicy: { policy: "same-site" },
+  crossOriginResourcePolicy: { policy: "cross-origin" },
   dnsPrefetchControl: { allow: false },
   frameguard: { action: "deny" },
   hidePoweredBy: true,
@@ -31,4 +31,4 @@ export const helmetConfig = helmet({
   permittedCrossDomainPolicies: { permittedPolicies: "none" },
   referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   xssFilter: true,
-}); 
+});

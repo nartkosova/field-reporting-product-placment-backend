@@ -59,6 +59,7 @@ export const getCompetitorByCategory = async (
           FROM competitor_brands cb
           JOIN competitor_brand_categories cbc ON cb.competitor_id = cbc.competitor_id
           WHERE cbc.category = ?
+          ORDER BY cb.brand_name
         `;
     const [competitors] = await db
       .promise()
@@ -113,6 +114,51 @@ export const getCompetitorBrandById = async (
   } catch (error) {
     console.error("Error fetching brand:", error);
     res.status(500).json({ error: "Server Error" });
+  }
+};
+
+export const getAllCompetitorsWithCategories = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const query = `
+      SELECT cbc.category, cb.competitor_id as competitor_id, cb.brand_name
+      FROM competitor_brand_categories cbc
+      JOIN competitor_brands cb ON cb.competitor_id = cbc.competitor_id
+    `;
+
+    const [rows] = await db.promise().query<RowDataPacket[]>(query);
+
+    if (!rows.length) {
+      res.status(404).json({ error: "No categories found" });
+      return;
+    }
+
+    const categoryMap: {
+      [category: string]: { competitor_id: number; brand_name: string }[];
+    } = {};
+
+    rows.forEach((row) => {
+      if (!categoryMap[row.category]) {
+        categoryMap[row.category] = [];
+      }
+
+      categoryMap[row.category].push({
+        competitor_id: row.competitor_id,
+        brand_name: row.brand_name,
+      });
+    });
+
+    const result = Object.entries(categoryMap).map(([category, brands]) => ({
+      category,
+      brands,
+    }));
+
+    res.json(result);
+  } catch (error) {
+    console.error("Error fetching competitors with categories:", error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 

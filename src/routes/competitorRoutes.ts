@@ -7,6 +7,7 @@ import {
   deleteCompetitorBrand,
   updateCompetitorBrand,
   getCompetitorByCategory,
+  getAllCompetitorsWithCategories,
 } from "../controllers/competitorController";
 import middleware from "../utils/middleware";
 
@@ -31,6 +32,11 @@ router.get(
   "/category/:category",
   middleware.authorizeRole(["admin", "employee"]),
   getCompetitorByCategory
+);
+router.get(
+  "/categories",
+  middleware.authorizeRole(["admin", "employee"]),
+  getAllCompetitorsWithCategories
 );
 router.post("/", middleware.authorizeRole(["admin"]), createCompetitorBrand);
 router.put(

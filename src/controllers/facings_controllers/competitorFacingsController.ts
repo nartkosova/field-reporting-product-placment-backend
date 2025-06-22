@@ -8,7 +8,8 @@ export const getFacingsWithCompetitors = async (
   res: Response
 ) => {
   try {
-    const { user_id, store_id, category, start_date, end_date } = req.query;
+    const { user_id, store_id, category, start_date, end_date, limit, offset } =
+      req.query;
 
     const conditions: string[] = [];
     const values: any[] = [];
@@ -33,6 +34,9 @@ export const getFacingsWithCompetitors = async (
     const whereClause =
       conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
+    const parsedLimit = parseInt(limit as string) || 20;
+    const parsedOffset = parseInt(offset as string) || 0;
+
     const query = `
       SELECT 
         pf_data.user,
@@ -42,14 +46,14 @@ export const getFacingsWithCompetitors = async (
         pf_data.category,
         DATE(pf_data.report_date) AS report_date,
         MAX(pf_data.total_facings) AS total_facings,
-  JSON_OBJECTAGG(
-    CONCAT(
-      COALESCE(cb.brand_name, 'Unknown Brand'), 
-      '-', 
-      COALESCE(cf.competitor_id, 'UnknownID')
-    ),
-    COALESCE(cf.facings_count, 0)
-  ) AS competitors,
+        JSON_OBJECTAGG(
+          CONCAT(
+            COALESCE(cb.brand_name, 'Unknown Brand'), 
+            '-', 
+            COALESCE(cf.competitor_id, 'UnknownID')
+          ),
+          COALESCE(cf.facings_count, 0)
+        ) AS competitors,
         SUM(COALESCE(cf.facings_count, 0)) AS total_competitor_facings
       FROM (
         SELECT 
@@ -65,6 +69,8 @@ export const getFacingsWithCompetitors = async (
         JOIN stores s ON pf.store_id = s.store_id
         ${whereClause}
         GROUP BY u.user_id, s.store_id, pf.category, pf.report_date
+        ORDER BY pf.report_date DESC
+        LIMIT ? OFFSET ?
       ) AS pf_data
       LEFT JOIN competitor_facings cf 
         ON pf_data.user_id = cf.user_id 
@@ -77,7 +83,9 @@ export const getFacingsWithCompetitors = async (
         pf_data.store_id,
         pf_data.category,
         DATE(pf_data.report_date)
-      `;
+    `;
+
+    values.push(parsedLimit, parsedOffset);
 
     const [results] = await db.promise().query(query, values);
 
