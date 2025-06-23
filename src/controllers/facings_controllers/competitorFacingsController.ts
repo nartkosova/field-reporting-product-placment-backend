@@ -14,25 +14,48 @@ export const getFacingsWithCompetitors = async (
     const conditions: string[] = [];
     const values: any[] = [];
 
-    if (user_id) {
-      conditions.push("pf.user_id = ?");
-      values.push(user_id);
+    const userIds = Array.isArray(user_id) ? user_id : user_id ? [user_id] : [];
+    const storeIds = Array.isArray(store_id)
+      ? store_id
+      : store_id
+      ? [store_id]
+      : [];
+    const categories = Array.isArray(category)
+      ? category
+      : category
+      ? [category]
+      : [];
+    if (userIds.length) {
+      conditions.push(`pf.user_id IN (${userIds.map(() => "?").join(",")})`);
+      values.push(...userIds);
     }
-    if (store_id) {
-      conditions.push("pf.store_id = ?");
-      values.push(store_id);
+    if (storeIds.length) {
+      conditions.push(`pf.store_id IN (${storeIds.map(() => "?").join(",")})`);
+      values.push(...storeIds);
     }
-    if (category) {
-      conditions.push("pf.category = ?");
-      values.push(category);
+    if (categories.length) {
+      conditions.push(
+        `pf.category IN (${categories.map(() => "?").join(",")})`
+      );
+      values.push(...categories);
     }
     if (start_date && end_date) {
-      conditions.push("pf.report_date BETWEEN ? AND ?");
+      conditions.push(`DATE(pf.created_at) BETWEEN ? AND ?`);
       values.push(start_date, end_date);
     }
-
     const whereClause =
       conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const countQueryValues = [...values];
+
+    const [countRows] = await db.promise().query(
+      `SELECT COUNT(DISTINCT pf.user_id, pf.store_id, pf.category, DATE(pf.created_at)) AS total
+           FROM podravka_facings pf
+           ${whereClause}`,
+      countQueryValues
+    );
+
+    const total = (countRows as RowDataPacket[])[0].total as number;
 
     const parsedLimit = parseInt(limit as string) || 20;
     const parsedOffset = parseInt(offset as string) || 0;
@@ -44,7 +67,7 @@ export const getFacingsWithCompetitors = async (
         pf_data.store_name,
         pf_data.store_id,
         pf_data.category,
-        DATE(pf_data.report_date) AS report_date,
+        DATE(pf_data.created_at) AS created_at,
         MAX(pf_data.total_facings) AS total_facings,
         JSON_OBJECTAGG(
           CONCAT(
@@ -62,27 +85,27 @@ export const getFacingsWithCompetitors = async (
           s.store_name,
           s.store_id,
           pf.category,
-          pf.report_date,
+          pf.created_at,
           SUM(pf.facings_count) AS total_facings
         FROM podravka_facings pf
         JOIN users u ON pf.user_id = u.user_id
         JOIN stores s ON pf.store_id = s.store_id
         ${whereClause}
-        GROUP BY u.user_id, s.store_id, pf.category, pf.report_date
-        ORDER BY pf.report_date DESC
+        GROUP BY u.user_id, s.store_id, pf.category, pf.created_at
+        ORDER BY pf.created_at DESC
         LIMIT ? OFFSET ?
       ) AS pf_data
       LEFT JOIN competitor_facings cf 
         ON pf_data.user_id = cf.user_id 
         AND pf_data.store_id = cf.store_id 
         AND pf_data.category = cf.category 
-        AND DATE(pf_data.report_date) = DATE(cf.report_date)
+        AND DATE(pf_data.created_at) = DATE(cf.created_at)
       LEFT JOIN competitor_brands cb ON cf.competitor_id = cb.competitor_id
       GROUP BY
         pf_data.user_id,
         pf_data.store_id,
         pf_data.category,
-        DATE(pf_data.report_date)
+        DATE(pf_data.created_at)
     `;
 
     values.push(parsedLimit, parsedOffset);
@@ -107,14 +130,14 @@ export const getFacingsWithCompetitors = async (
         store_name: row.store_name,
         store_id: row.store_id,
         category: row.category,
-        report_date: row.report_date,
+        created_at: row.created_at,
         total_facings: row.total_facings,
         competitors: simplified,
         total_competitor_facings: row.total_competitor_facings,
       };
     });
 
-    res.json(formatted);
+    res.json({ data: formatted, total });
   } catch (err) {
     console.error("Error fetching facings with competitors:", err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -136,13 +159,13 @@ export const getCompetitorFacingByUserId = async (
         cf.batch_id,
         s.store_name,
         cf.category,
-        cf.report_date as report_date,
+        cf.created_at as created_at,
         COUNT(*) as product_count
       FROM competitor_facings cf
       JOIN stores s ON cf.store_id = s.store_id
       WHERE cf.user_id = ? AND batch_id IS NOT NULL
-      GROUP BY cf.batch_id, cf.store_id, cf.category, cf.report_date
-      ORDER BY cf.report_date DESC
+      GROUP BY cf.batch_id, cf.store_id, cf.category, cf.created_at
+      ORDER BY cf.created_at DESC
     `;
 
     const [results] = await db

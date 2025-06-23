@@ -78,11 +78,11 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
         u.user AS user,
         rp.store_id,
         s.store_name,
-        rp.uploaded_at
+        rp.created_at
       FROM report_photos rp
       JOIN users u ON rp.user_id = u.user_id
       JOIN stores s ON rp.store_id = s.store_id
-      ORDER BY rp.uploaded_at DESC
+      ORDER BY rp.created_at DESC
       LIMIT ? OFFSET ?
     `;
 
@@ -170,12 +170,12 @@ export const getReportPhotosByUserId = async (
         u.user AS user,
         rp.store_id,
         s.store_name,
-        rp.uploaded_at
+        rp.created_at
       FROM report_photos rp
       JOIN users u ON rp.user_id = u.user_id
       JOIN stores s ON rp.store_id = s.store_id
       WHERE rp.user_id = ?
-      ORDER BY rp.uploaded_at DESC
+      ORDER BY rp.created_at DESC
     `;
 
     const [results] = await db.promise().query(query, [user_id]);

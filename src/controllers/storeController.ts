@@ -17,7 +17,8 @@ export const getStoresWithUserId = async (
   res: Response
 ): Promise<void> => {
   try {
-    const query = "SELECT * FROM stores WHERE user_id IS NOT NULL";
+    const query =
+      "SELECT * FROM stores WHERE user_id IS NOT NULL ORDER BY store_name ASC";
     const [stores] = await db.promise().query<RowDataPacket[]>(query);
     res.json(stores);
   } catch (error) {

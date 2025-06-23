@@ -34,13 +34,13 @@ export const getUserPPLBatches = async (
         pf.batch_id,
         s.store_name,
         pf.category,
-        pf.report_date as report_date,
+        pf.created_at as created_at,
         COUNT(*) as product_count
       FROM podravka_facings pf
       JOIN stores s ON pf.store_id = s.store_id
       WHERE pf.user_id = ? AND batch_id IS NOT NULL
-      GROUP BY pf.batch_id, pf.store_id, pf.category, pf.report_date
-      ORDER BY pf.report_date DESC
+      GROUP BY pf.batch_id, pf.store_id, pf.category, pf.created_at
+      ORDER BY pf.created_at DESC
     `;
 
     const [rows] = await db.promise().query<RowDataPacket[]>(query, [user_id]);
