@@ -6,6 +6,8 @@ import {
   getCompetitorProducts,
   updateCompetitorProduct,
   deleteCompetitorProduct,
+  updateProduct,
+  deleteProduct,
 } from "../controllers/productController";
 import middleware from "../utils/middleware";
 
@@ -21,6 +23,12 @@ router.post(
   "/",
   middleware.authorizeRole(["admin", "employee"]),
   createProduct
+);
+router.put("/:product_id", middleware.authorizeRole(["admin"]), updateProduct);
+router.delete(
+  "/:product_id",
+  middleware.authorizeRole(["admin"]),
+  deleteProduct
 );
 router.post(
   "/competitor",

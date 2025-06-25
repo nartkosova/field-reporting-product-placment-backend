@@ -63,8 +63,65 @@ export const uploadReportPhoto = async (
 
 export const getAllReportPhotos = async (req: Request, res: Response) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 50;
-    const offset = parseInt(req.query.offset as string) || 0;
+    const {
+      limit = "50",
+      offset = "0",
+      user_ids,
+      store_ids,
+      categories,
+      months,
+      photo_types,
+      company,
+    } = req.query;
+
+    const where: string[] = [];
+    const values: any[] = [];
+
+    const parseArray = (input: string | string[] | undefined): string[] =>
+      input
+        ? (Array.isArray(input) ? input : input.split(",")).map((s) => s.trim())
+        : [];
+
+    const userIds = parseArray(user_ids as string | string[] | undefined);
+    const storeIds = parseArray(store_ids as string | string[] | undefined);
+    const cats = parseArray(categories as string | string[] | undefined);
+    const types = parseArray(photo_types as string | string[] | undefined);
+    const monthArr = parseArray(months as string | string[] | undefined);
+    const companyVal = typeof company === "string" ? company.trim() : "";
+
+    if (userIds.length) {
+      where.push(`rp.user_id IN (${userIds.map(() => "?").join(",")})`);
+      values.push(...userIds);
+    }
+    if (storeIds.length) {
+      where.push(`rp.store_id IN (${storeIds.map(() => "?").join(",")})`);
+      values.push(...storeIds);
+    }
+    if (cats.length) {
+      where.push(`rp.category IN (${cats.map(() => "?").join(",")})`);
+      values.push(...cats);
+    }
+    if (types.length) {
+      where.push(`rp.photo_type IN (${types.map(() => "?").join(",")})`);
+      values.push(...types);
+    }
+    if (monthArr.length) {
+      where.push(
+        `LPAD(MONTH(rp.created_at), 2, '0') IN (${monthArr
+          .map(() => "?")
+          .join(",")})`
+      );
+      values.push(...monthArr);
+    }
+    if (companyVal) {
+      where.push(`rp.company = ?`);
+      values.push(companyVal);
+    }
+
+    const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const parsedLimit = parseInt(limit as string) || 50;
+    const parsedOffset = parseInt(offset as string) || 0;
 
     const query = `
       SELECT
@@ -82,16 +139,23 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
       FROM report_photos rp
       JOIN users u ON rp.user_id = u.user_id
       JOIN stores s ON rp.store_id = s.store_id
+      ${whereClause}
       ORDER BY rp.created_at DESC
       LIMIT ? OFFSET ?
     `;
 
-    const [results] = await db.promise().query(query, [limit, offset]);
-
-    const [countResult] = await db
+    const [results] = await db
       .promise()
-      .query("SELECT COUNT(*) AS total FROM report_photos");
-    const total = (countResult as any)[0]?.total || 0;
+      .query(query, [...values, parsedLimit, parsedOffset]);
+
+    const [countRows] = await db
+      .promise()
+      .query(
+        `SELECT COUNT(*) AS total FROM report_photos rp ${whereClause}`,
+        values
+      );
+
+    const total = (countRows as RowDataPacket[])[0].total;
 
     res.json({ data: results, total });
   } catch (err) {

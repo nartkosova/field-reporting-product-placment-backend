@@ -72,10 +72,17 @@ export const createProduct = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { category, name, podravka_code, elkos_code, product_category } =
-      req.body;
+    const {
+      category,
+      name,
+      podravka_code,
+      elkos_code,
+      product_category,
+      weight,
+      business_unit,
+    } = req.body;
 
-    const user = req.user; // from middleware
+    const user = req.user;
     if (!user || !user.user_id) {
       res.status(401).json({ error: "Nuk jeni te autoreziaur" });
       return;
@@ -88,8 +95,8 @@ export const createProduct = async (
 
     const query = `
       INSERT INTO podravka_products 
-        (category, name, podravka_code, elkos_code, product_category) 
-      VALUES (?, ?, ?, ?, ?)
+        (category, name, podravka_code, elkos_code, product_category, weight, business_unit) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
     const [result] = await db
@@ -100,6 +107,8 @@ export const createProduct = async (
         podravka_code,
         elkos_code,
         product_category,
+        weight,
+        business_unit,
       ]);
 
     const insertId = (result as any).insertId;
@@ -109,6 +118,82 @@ export const createProduct = async (
       .json({ id: insertId, message: "Product added successfully!" });
   } catch (error) {
     console.error("Error adding product:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const updateProduct = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { product_id } = req.params;
+    const {
+      category,
+      name,
+      podravka_code,
+      elkos_code,
+      product_category,
+      weight,
+      business_unit,
+    } = req.body;
+
+    if (!category || !name || !podravka_code || !product_category) {
+      res
+        .status(400)
+        .json({ error: "Të gjitha fushat e nevojshme duhet të plotësohen!" });
+      return;
+    }
+
+    const query = `
+      UPDATE podravka_products
+      SET category = ?, name = ?, podravka_code = ?, elkos_code = ?, product_category = ?, weight = ?, business_unit = ?
+      WHERE product_id = ?
+    `;
+
+    const [result] = await db
+      .promise()
+      .query<OkPacket>(query, [
+        category,
+        name,
+        podravka_code,
+        elkos_code,
+        product_category,
+        weight,
+        business_unit,
+        product_id,
+      ]);
+
+    if (result.affectedRows === 0) {
+      res.status(404).json({ error: "Produkti nuk u gjet" });
+      return;
+    }
+
+    res.json({ message: "Produkti u përditësua me sukses" });
+  } catch (error) {
+    console.error("Error updating product:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const deleteProduct = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { product_id } = req.params;
+
+    const query = "DELETE FROM podravka_products WHERE product_id = ?";
+    const [result] = await db.promise().query<OkPacket>(query, [product_id]);
+
+    if (result.affectedRows === 0) {
+      res.status(404).json({ error: "Produkti nuk egziston" });
+      return;
+    }
+
+    res.json({ message: "Produkti u fshi me sukses" });
+  } catch (error) {
+    console.error("Error deleting product:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
