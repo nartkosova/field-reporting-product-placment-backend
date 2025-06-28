@@ -51,6 +51,114 @@ export const getUserPPLBatches = async (
   }
 };
 
+export const getPodravkaFacingsReport = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const {
+      user_id,
+      store_id,
+      categories,
+      start_date,
+      end_date,
+      limit,
+      offset,
+    } = req.query;
+
+    const conditions: string[] = [];
+    const values: any[] = [];
+
+    const userIds = Array.isArray(user_id) ? user_id : user_id ? [user_id] : [];
+    const storeIds = Array.isArray(store_id)
+      ? store_id
+      : store_id
+      ? [store_id]
+      : [];
+    const categoryList = Array.isArray(categories)
+      ? categories
+      : categories
+      ? [categories]
+      : [];
+
+    if (userIds.length) {
+      conditions.push(`pf.user_id IN (${userIds.map(() => "?").join(",")})`);
+      values.push(...userIds);
+    }
+    if (storeIds.length) {
+      conditions.push(`pf.store_id IN (${storeIds.map(() => "?").join(",")})`);
+      values.push(...storeIds);
+    }
+    if (categoryList.length) {
+      conditions.push(
+        `pf.category IN (${categoryList.map(() => "?").join(",")})`
+      );
+      values.push(...categoryList);
+    }
+
+    if (start_date && end_date) {
+      conditions.push(`DATE(pf.created_at) BETWEEN ? AND ?`);
+      values.push(start_date, end_date);
+    }
+
+    const whereClause = conditions.length
+      ? `WHERE ${conditions.join(" AND ")}`
+      : "";
+
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM podravka_facings pf
+      JOIN podravka_products pp ON pf.product_id = pp.product_id
+      JOIN stores s ON pf.store_id = s.store_id
+      JOIN users u ON pf.user_id = u.user_id
+      ${whereClause}
+    `;
+
+    const [countRows] = await db.promise().query(countQuery, [...values]);
+    const total = (countRows as RowDataPacket[])[0].total;
+
+    const parsedLimit = parseInt(limit as string) || 50;
+    const parsedOffset = parseInt(offset as string) || 0;
+
+    const dataQuery = `
+      SELECT 
+        pf.podravka_facings_id,
+        pf.facings_count,
+        pf.created_at,
+        pf.category AS facing_category,
+        pp.name AS product_name,
+        pp.category AS product_category,
+        pr.category_rank AS product_category_rank,
+        s.store_name,
+        s.sales_rep,
+        s.location,
+        u.user AS reported_by
+      FROM podravka_facings pf
+      JOIN podravka_products pp ON pf.product_id = pp.product_id
+      LEFT JOIN product_rankings pr ON pr.product_id = pp.product_id
+        AND pr.year = (
+          SELECT MAX(year)
+          FROM product_rankings
+          WHERE product_id = pp.product_id
+        )
+      JOIN stores s ON pf.store_id = s.store_id
+      JOIN users u ON pf.user_id = u.user_id
+      ${whereClause}
+      ORDER BY pf.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    values.push(parsedLimit, parsedOffset);
+
+    const [results] = await db.promise().query(dataQuery, values);
+
+    res.json({ data: results, total });
+  } catch (err) {
+    console.error("Error generating Podravka Facings Report:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
 export const batchCreatePodravkaFacings = async (
   req: Request,
   res: Response

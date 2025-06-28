@@ -8,6 +8,8 @@ import {
   deleteCompetitorProduct,
   updateProduct,
   deleteProduct,
+  getProductCategories,
+  getProductByIdWithRanking,
 } from "../controllers/productController";
 import middleware from "../utils/middleware";
 
@@ -18,6 +20,12 @@ router.get(
   "/competitor",
   middleware.authorizeRole(["admin", "employee"]),
   getCompetitorProducts
+);
+router.get("/categories", getProductCategories);
+router.get(
+  "/:product_id",
+  middleware.authorizeRole(["admin", "employee"]),
+  getProductByIdWithRanking
 );
 router.post(
   "/",

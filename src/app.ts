@@ -14,7 +14,7 @@ import podravkaFacingsRoutes from "./routes/facings_routes/podravkaFacingRoutes"
 import competitorRoutes from "./routes/competitorRoutes";
 import priceRoutes from "./routes/priceRoutes";
 import photoRoutes from "./routes/photoRoutes";
-
+import llmRoutes from "./routes/llmRoutes";
 import path from "path";
 
 const app = express();
@@ -75,6 +75,14 @@ app.use(
   middleware.userExtractor,
   middleware.rejectManualUserId,
   photoRoutes
+);
+app.use(
+  "/api/ai",
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  middleware.authorizeRole(["admin", "employee"]),
+  llmRoutes
 );
 app.use(middleware.unknownEndpoint);
 app.use(middleware.errorHandler);

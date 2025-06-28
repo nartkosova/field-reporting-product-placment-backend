@@ -9,7 +9,7 @@ export const getProducts = async (
   try {
     const { category } = req.query;
 
-    let query = "SELECT * FROM podravka_products";
+    let query = "SELECT product_id, name FROM podravka_products";
     const queryParams: any[] = [];
 
     if (category) {
@@ -64,6 +64,66 @@ export const getCompetitorProducts = async (
   } catch (error) {
     console.error("Error fetching competitor products:", error);
     res.status(500).json({ error: "Server Error" });
+  }
+};
+
+export const getProductCategories = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const query =
+      "SELECT DISTINCT category, business_unit FROM podravka_products";
+    const [rows] = await db.promise().query<RowDataPacket[]>(query);
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: "No product categories found" });
+      return;
+    }
+
+    res.json(rows); // returns array of { category, business_unit }
+  } catch (error) {
+    console.error("Error fetching product categories:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const getProductByIdWithRanking = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { product_id } = req.params;
+
+    const productQuery = `
+      SELECT 
+        p.*,
+        r.total_rank,
+        r.category_rank,
+        r.sales_last_year,
+        r.year
+      FROM podravka_products p
+      LEFT JOIN product_rankings r
+        ON p.product_id = r.product_id
+        AND r.year = (
+          SELECT MAX(year)
+          FROM product_rankings
+          WHERE product_id = p.product_id
+        )
+      WHERE p.product_id = ?
+    `;
+
+    const [rows] = await db.promise().query(productQuery, [product_id]);
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.status(404).json({ error: "Produkti nuk u gjet." });
+      return;
+    }
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("Error fetching product with ranking:", err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -136,6 +196,9 @@ export const updateProduct = async (
       product_category,
       weight,
       business_unit,
+      total_rank,
+      category_rank,
+      sales_last_year,
     } = req.body;
 
     if (!category || !name || !podravka_code || !product_category) {
@@ -145,15 +208,15 @@ export const updateProduct = async (
       return;
     }
 
-    const query = `
+    const updateProductQuery = `
       UPDATE podravka_products
       SET category = ?, name = ?, podravka_code = ?, elkos_code = ?, product_category = ?, weight = ?, business_unit = ?
       WHERE product_id = ?
     `;
 
-    const [result] = await db
+    const [productResult] = await db
       .promise()
-      .query<OkPacket>(query, [
+      .query(updateProductQuery, [
         category,
         name,
         podravka_code,
@@ -164,9 +227,48 @@ export const updateProduct = async (
         product_id,
       ]);
 
-    if (result.affectedRows === 0) {
+    if ((productResult as OkPacket).affectedRows === 0) {
       res.status(404).json({ error: "Produkti nuk u gjet" });
       return;
+    }
+
+    // Optional: Update ranking only if all three values are provided
+    if (
+      total_rank !== undefined &&
+      category_rank !== undefined &&
+      sales_last_year !== undefined
+    ) {
+      const updateRankingQuery = `
+        UPDATE product_rankings
+        SET total_rank = ?, category_rank = ?, sales_last_year = ?
+        WHERE product_id = ? AND year = 2024
+      `;
+
+      const [rankingResult] = await db
+        .promise()
+        .query(updateRankingQuery, [
+          total_rank,
+          category_rank,
+          sales_last_year,
+          product_id,
+        ]);
+
+      if ((rankingResult as OkPacket).affectedRows === 0) {
+        // Optionally insert if it doesn't exist
+        const insertRankingQuery = `
+          INSERT INTO product_rankings (product_id, year, total_rank, category_rank, sales_last_year)
+          VALUES (?, 2024, ?, ?, ?)
+        `;
+
+        await db
+          .promise()
+          .query(insertRankingQuery, [
+            product_id,
+            total_rank,
+            category_rank,
+            sales_last_year,
+          ]);
+      }
     }
 
     res.json({ message: "Produkti u përditësua me sukses" });
@@ -183,15 +285,37 @@ export const deleteProduct = async (
   try {
     const { product_id } = req.params;
 
-    const query = "DELETE FROM podravka_products WHERE product_id = ?";
-    const [result] = await db.promise().query<OkPacket>(query, [product_id]);
+    const conn = await db.promise().getConnection();
+    try {
+      await conn.beginTransaction();
 
-    if (result.affectedRows === 0) {
-      res.status(404).json({ error: "Produkti nuk egziston" });
-      return;
+      await conn.query("DELETE FROM product_rankings WHERE product_id = ?", [
+        product_id,
+      ]);
+      await conn.query("DELETE FROM podravka_facings WHERE product_id = ?", [
+        product_id,
+      ]);
+      // Add more deletions here if needed (e.g., price table, etc.)
+
+      const [result] = await conn.query(
+        "DELETE FROM podravka_products WHERE product_id = ?",
+        [product_id]
+      );
+
+      await conn.commit();
+
+      if ((result as OkPacket).affectedRows === 0) {
+        res.status(404).json({ error: "Produkti nuk egziston" });
+        return;
+      }
+
+      res.json({ message: "Produkti u fshi me sukses" });
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
     }
-
-    res.json({ message: "Produkti u fshi me sukses" });
   } catch (error) {
     console.error("Error deleting product:", error);
     res.status(500).json({ error: "Internal Server Error" });

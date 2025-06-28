@@ -69,9 +69,10 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
       user_ids,
       store_ids,
       categories,
-      months,
       photo_types,
       company,
+      start_date,
+      end_date,
     } = req.query;
 
     const where: string[] = [];
@@ -86,8 +87,9 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
     const storeIds = parseArray(store_ids as string | string[] | undefined);
     const cats = parseArray(categories as string | string[] | undefined);
     const types = parseArray(photo_types as string | string[] | undefined);
-    const monthArr = parseArray(months as string | string[] | undefined);
     const companyVal = typeof company === "string" ? company.trim() : "";
+    const startDate = start_date as string;
+    const endDate = end_date as string;
 
     if (userIds.length) {
       where.push(`rp.user_id IN (${userIds.map(() => "?").join(",")})`);
@@ -105,19 +107,15 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
       where.push(`rp.photo_type IN (${types.map(() => "?").join(",")})`);
       values.push(...types);
     }
-    if (monthArr.length) {
-      where.push(
-        `LPAD(MONTH(rp.created_at), 2, '0') IN (${monthArr
-          .map(() => "?")
-          .join(",")})`
-      );
-      values.push(...monthArr);
-    }
+
     if (companyVal) {
       where.push(`rp.company = ?`);
       values.push(companyVal);
     }
-
+    if (startDate && endDate) {
+      where.push(`DATE(rp.created_at) BETWEEN ? AND ?`);
+      values.push(startDate, endDate);
+    }
     const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
     const parsedLimit = parseInt(limit as string) || 50;
