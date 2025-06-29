@@ -120,6 +120,22 @@ export const getPodravkaFacingsReport = async (
     const parsedLimit = parseInt(limit as string) || 50;
     const parsedOffset = parseInt(offset as string) || 0;
 
+    const totalsQuery = `
+    SELECT pp.category AS product_category, SUM(pf.facings_count) AS total_facings
+    FROM podravka_facings pf
+    JOIN podravka_products pp ON pf.product_id = pp.product_id
+    ${whereClause}
+    GROUP BY pp.category
+  `;
+
+    const [totalsRows] = await db.promise().query(totalsQuery, values.slice(0)); // no limit/offset
+    const categoryTotals = Object.fromEntries(
+      (totalsRows as RowDataPacket[]).map((row) => [
+        row.product_category,
+        row.total_facings,
+      ])
+    );
+
     const dataQuery = `
       SELECT 
         pf.podravka_facings_id,
@@ -129,9 +145,8 @@ export const getPodravkaFacingsReport = async (
         pp.name AS product_name,
         pp.category AS product_category,
         pr.category_rank AS product_category_rank,
+        pr.category_sales_share,
         s.store_name,
-        s.sales_rep,
-        s.location,
         u.user AS reported_by
       FROM podravka_facings pf
       JOIN podravka_products pp ON pf.product_id = pp.product_id
@@ -152,7 +167,16 @@ export const getPodravkaFacingsReport = async (
 
     const [results] = await db.promise().query(dataQuery, values);
 
-    res.json({ data: results, total });
+    const enrichedResults = (results as RowDataPacket[]).map((row) => {
+      const total = categoryTotals[row.product_category] || 1;
+      const percentage = (row.facings_count / total) * 100;
+      return {
+        ...row,
+        facing_percentage_in_category: parseFloat(percentage.toFixed(2)),
+      };
+    });
+
+    res.json({ data: enrichedResults, total });
   } catch (err) {
     console.error("Error generating Podravka Facings Report:", err);
     res.status(500).json({ error: "Server error" });

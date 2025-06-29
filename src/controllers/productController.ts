@@ -96,22 +96,23 @@ export const getProductByIdWithRanking = async (
     const { product_id } = req.params;
 
     const productQuery = `
-      SELECT 
-        p.*,
-        r.total_rank,
-        r.category_rank,
-        r.sales_last_year,
-        r.year
-      FROM podravka_products p
-      LEFT JOIN product_rankings r
-        ON p.product_id = r.product_id
-        AND r.year = (
-          SELECT MAX(year)
-          FROM product_rankings
-          WHERE product_id = p.product_id
-        )
-      WHERE p.product_id = ?
-    `;
+    SELECT 
+      p.*,
+      r.total_rank,
+      r.category_rank,
+      r.sales_last_year,
+      r.category_sales_share,
+      r.year
+    FROM podravka_products p
+    LEFT JOIN product_rankings r
+      ON p.product_id = r.product_id
+      AND r.year = (
+        SELECT MAX(year)
+        FROM product_rankings
+        WHERE product_id = p.product_id
+      )
+    WHERE p.product_id = ?
+  `;
 
     const [rows] = await db.promise().query(productQuery, [product_id]);
 
@@ -199,6 +200,7 @@ export const updateProduct = async (
       total_rank,
       category_rank,
       sales_last_year,
+      category_sales_share,
     } = req.body;
 
     if (!category || !name || !podravka_code || !product_category) {
@@ -240,7 +242,7 @@ export const updateProduct = async (
     ) {
       const updateRankingQuery = `
         UPDATE product_rankings
-        SET total_rank = ?, category_rank = ?, sales_last_year = ?
+        SET total_rank = ?, category_rank = ?, sales_last_year = ?, category_sales_share = ?
         WHERE product_id = ? AND year = 2024
       `;
 
@@ -250,14 +252,15 @@ export const updateProduct = async (
           total_rank,
           category_rank,
           sales_last_year,
+          category_sales_share,
           product_id,
         ]);
 
       if ((rankingResult as OkPacket).affectedRows === 0) {
         // Optionally insert if it doesn't exist
         const insertRankingQuery = `
-          INSERT INTO product_rankings (product_id, year, total_rank, category_rank, sales_last_year)
-          VALUES (?, 2024, ?, ?, ?)
+          INSERT INTO product_rankings (product_id, year, total_rank, category_rank, sales_last_year, category_sales_share)
+          VALUES (?, ?, ?, ?, ?, ?)
         `;
 
         await db
