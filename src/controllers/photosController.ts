@@ -165,8 +165,8 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
 export const bulkDeletePhotos: RequestHandler = async (req, res) => {
   const { photoUrls } = req.body as { photoUrls: string[] };
 
-  if (!Array.isArray(photoUrls)) {
-    res.status(400).json({ error: "Invalid photoUrls array" });
+  if (!Array.isArray(photoUrls) || photoUrls.length === 0) {
+    res.status(400).json({ error: "URL i Fotos eshte invalide!" });
     return;
   }
 
@@ -174,37 +174,49 @@ export const bulkDeletePhotos: RequestHandler = async (req, res) => {
     const results = await Promise.all(
       photoUrls.map(async (url) => {
         const publicId = extractPublicId(url);
-        console.log("Extracted public_id:", publicId);
-
         if (!publicId) {
-          return { url, status: "failed", reason: "Invalid URL" };
+          return { url, status: "failed", reason: "Invalid Cloudinary URL" };
         }
 
-        const cloudRes = await cloudinary.uploader.destroy(publicId, {
-          invalidate: true,
-        });
-        console.log("Cloudinary destroy result:", cloudRes);
-
-        if (cloudRes.result !== "ok") {
-          return { url, status: "failed", reason: cloudRes.result };
+        let cloudResult: string;
+        try {
+          const cloudRes = await cloudinary.uploader.destroy(publicId, {
+            invalidate: true,
+          });
+          cloudResult = cloudRes.result;
+        } catch (cloudErr) {
+          console.error(`Cloudinary error for ${publicId}:`, cloudErr);
+          cloudResult = "cloudinary-error";
         }
 
-        const [dbResult] = await db
-          .promise()
-          .query("DELETE FROM report_photos WHERE photo_url = ?", [url]);
+        let dbAffected = 0;
+        try {
+          const [dbRes] = await db
+            .promise()
+            .query("DELETE FROM report_photos WHERE photo_url = ?", [url]);
+          dbAffected = (dbRes as any).affectedRows || 0;
+        } catch (dbErr) {
+          console.error(`DB delete error for ${url}:`, dbErr);
+        }
 
         return {
           url,
-          status: "success",
-          dbAffected: (dbResult as any).affectedRows ?? 0,
+          status:
+            cloudResult === "ok" && dbAffected > 0
+              ? "success"
+              : cloudResult !== "ok"
+              ? "cloudinary-failed"
+              : "db-failed",
+          cloudResult,
+          dbAffected,
         };
       })
     );
 
     res.status(200).json({ results });
   } catch (err) {
-    console.error("Bulk deletion error:", err);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("Unexpected bulk deletion error:", err);
+    res.status(500).json({ error: "Server Error" });
   }
 };
 

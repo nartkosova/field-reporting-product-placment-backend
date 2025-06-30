@@ -3,15 +3,27 @@ import db from "../models/db";
 import { QueryError, RowDataPacket } from "mysql2";
 
 export const getStores = async (req: Request, res: Response): Promise<void> => {
+  const channel = req.query.channel as string | undefined;
+
   try {
-    const query = "SELECT * FROM stores ORDER BY store_name ASC";
-    const [stores] = await db.promise().query<RowDataPacket[]>(query);
+    let query = "SELECT store_id, store_name, store_category FROM stores";
+    const params: string[] = [];
+
+    if (channel) {
+      query += " WHERE store_channel = ?";
+      params.push(channel);
+    }
+
+    query += " ORDER BY store_name ASC";
+    const [stores] = await db.promise().query<RowDataPacket[]>(query, params);
+
     res.json(stores);
   } catch (error) {
     console.error("Error fetching stores:", error);
     res.status(500).json({ error: "Server error" });
   }
 };
+
 export const getStoresWithUserId = async (
   req: Request,
   res: Response
@@ -26,6 +38,7 @@ export const getStoresWithUserId = async (
     res.status(500).json({ error: "Server error" });
   }
 };
+
 export const getStoreById = async (
   req: Request,
   res: Response
@@ -48,6 +61,7 @@ export const getStoreById = async (
     res.status(500).json({ error: "Server error" });
   }
 };
+
 export const getStoreNameById = async (
   store_id: number
 ): Promise<string | null> => {
@@ -56,14 +70,21 @@ export const getStoreNameById = async (
     .query(`SELECT store_name FROM stores WHERE store_id = ?`, [store_id]);
   return rows.length > 0 ? rows[0].store_name : null;
 };
+
 export const getStoreByUserId = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
     const { user_id } = req.params;
-    const query =
-      "SELECT * FROM stores WHERE user_id IS NOT NULL AND user_id = ?";
+
+    const query = `
+      SELECT store_id, store_name, store_category, user_id
+      FROM stores
+      WHERE user_id IS NOT NULL AND user_id = ?
+      ORDER BY store_name ASC
+    `;
+
     const [stores] = await db
       .promise()
       .query<RowDataPacket[]>(query, [user_id]);
@@ -81,6 +102,7 @@ export const getStoreByUserId = async (
     res.status(500).json({ error: "Server error" });
   }
 };
+
 export const createStore = async (
   req: Request,
   res: Response
@@ -142,6 +164,7 @@ export const createStore = async (
     res.status(500).json({ error: "Server Error" });
   }
 };
+
 export const getStoreProducts = async (
   req: Request,
   res: Response
@@ -172,7 +195,8 @@ export const getStoreProducts = async (
     const placeholders = allowedCategories.map(() => "?").join(",");
 
     const query = `
-      SELECT * FROM podravka_products 
+      SELECT product_id, category, name, product_category 
+      FROM podravka_products 
       WHERE product_category IN (${placeholders})
     `;
     const [products] = await db

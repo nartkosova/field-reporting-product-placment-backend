@@ -22,7 +22,6 @@ const app = express();
 // Security middleware
 app.use(helmetConfig);
 app.use(cors());
-app.use(express.static("dist"));
 app.use(bodyParser.json());
 app.use(logger);
 app.use(generalLimiter);
@@ -95,7 +94,4 @@ app.use(
 );
 app.use(middleware.unknownEndpoint);
 app.use(middleware.errorHandler);
-app.get("*", (req, res) => {
-  res.sendFile(path.resolve(__dirname, "dist", "index.html"));
-});
 module.exports = app;

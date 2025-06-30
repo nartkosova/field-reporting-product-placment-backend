@@ -121,7 +121,7 @@ export const getUserById = async (
 };
 
 export const getUsers = (req: Request, res: Response): void => {
-  const query = "SELECT * FROM users ORDER BY user ASC";
+  const query = "SELECT user_id, user, created_at FROM users ORDER BY user ASC";
 
   db.query<RowDataPacket[]>(query, (err: QueryError | null, results) => {
     if (err) return res.status(500).json({ error: err.message });

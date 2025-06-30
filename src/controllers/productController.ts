@@ -9,7 +9,8 @@ export const getProducts = async (
   try {
     const { category } = req.query;
 
-    let query = "SELECT product_id, name FROM podravka_products";
+    let query =
+      "SELECT product_id, name FROM podravka_products ORDER BY name ASC";
     const queryParams: any[] = [];
 
     if (category) {
@@ -143,9 +144,9 @@ export const getProductsByCategory = async (
     }
 
     const query = `
-      SELECT *
-      FROM podravka_products
-      WHERE category = ?
+    SELECT product_id, category, name, product_category
+    FROM podravka_products
+    WHERE category = ?
     `;
 
     const [products] = await db
