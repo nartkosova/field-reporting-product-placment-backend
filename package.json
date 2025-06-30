@@ -1,5 +1,5 @@
 {
-  "name": "podravkaapp-backend",
+  "name": "field-report-backend",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@langchain/openai": "^0.5.16",
     "@types/bcryptjs": "^2.4.6",
     "@types/express-rate-limit": "^5.1.3",

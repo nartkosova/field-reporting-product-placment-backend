@@ -16,7 +16,7 @@ import priceRoutes from "./routes/priceRoutes";
 import photoRoutes from "./routes/photoRoutes";
 import llmRoutes from "./routes/llmRoutes";
 import path from "path";
-
+import geminiRoutes from "./routes/geminiRoutes";
 const app = express();
 
 // Security middleware
@@ -83,6 +83,15 @@ app.use(
   middleware.userExtractor,
   middleware.authorizeRole(["admin", "employee"]),
   llmRoutes
+);
+
+app.use(
+  "/api/gemini",
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  middleware.authorizeRole(["admin", "employee"]),
+  geminiRoutes
 );
 app.use(middleware.unknownEndpoint);
 app.use(middleware.errorHandler);

@@ -4,10 +4,6 @@ import middleware from "../utils/middleware";
 
 const router = express.Router();
 
-router.post(
-  "/response",
-  middleware.authorizeRole(["admin", "employee"]),
-  getAIResponse
-);
+router.post("/response", getAIResponse);
 
 export default router;

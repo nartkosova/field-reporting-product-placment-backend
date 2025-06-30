@@ -128,6 +128,42 @@ export const getProductByIdWithRanking = async (
   }
 };
 
+export const getProductsByCategory = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { category } = req.params;
+
+    if (!category) {
+      res
+        .status(400)
+        .json({ error: "Kategoria e produktit është e nevojshme" });
+      return;
+    }
+
+    const query = `
+      SELECT *
+      FROM podravka_products
+      WHERE category = ?
+    `;
+
+    const [products] = await db
+      .promise()
+      .query<RowDataPacket[]>(query, [category]);
+
+    if (products.length === 0) {
+      res.status(404).json({ error: "Nuk ka produkte në këtë kategori" });
+      return;
+    }
+
+    res.json(products);
+  } catch (error) {
+    console.error("Error fetching products by category:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
 export const createProduct = async (
   req: Request,
   res: Response

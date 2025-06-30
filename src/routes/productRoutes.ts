@@ -10,6 +10,7 @@ import {
   deleteProduct,
   getProductCategories,
   getProductByIdWithRanking,
+  getProductsByCategory,
 } from "../controllers/productController";
 import middleware from "../utils/middleware";
 
@@ -26,6 +27,11 @@ router.get(
   "/:product_id",
   middleware.authorizeRole(["admin", "employee"]),
   getProductByIdWithRanking
+);
+router.get(
+  "/category/:category",
+  middleware.authorizeRole(["admin", "employee"]),
+  getProductsByCategory
 );
 router.post(
   "/",
