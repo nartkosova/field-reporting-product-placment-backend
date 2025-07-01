@@ -79,7 +79,7 @@ export const getStoreByUserId = async (
     const { user_id } = req.params;
 
     const query = `
-      SELECT *
+      SELECT store_id, store_name, store_code, store_category,
       FROM stores
       WHERE user_id IS NOT NULL AND user_id = ?
       ORDER BY store_name ASC
