@@ -30,7 +30,7 @@ export const getStoresWithUserId = async (
 ): Promise<void> => {
   try {
     const query =
-      "SELECT * FROM stores WHERE user_id IS NOT NULL ORDER BY store_name ASC";
+      "SELECT store_id, store_name, store_category FROM stores WHERE user_id IS NOT NULL ORDER BY store_name ASC";
     const [stores] = await db.promise().query<RowDataPacket[]>(query);
     res.json(stores);
   } catch (error) {
@@ -79,7 +79,7 @@ export const getStoreByUserId = async (
     const { user_id } = req.params;
 
     const query = `
-      SELECT store_id, store_name, store_category, user_id
+      SELECT *
       FROM stores
       WHERE user_id IS NOT NULL AND user_id = ?
       ORDER BY store_name ASC
