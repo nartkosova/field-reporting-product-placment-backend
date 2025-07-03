@@ -2,7 +2,7 @@ import rateLimit from "express-rate-limit";
 
 export const generalLimiter = rateLimit({
   windowMs: 1 * 60 * 1000,
-  max: 20,
+  max: 300,
   message: "Keni bërë shumë kërkesa, ju lutemi provoni përsëri më vonë",
 });
 
