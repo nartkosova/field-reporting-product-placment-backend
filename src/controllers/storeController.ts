@@ -130,12 +130,16 @@ export const createStore = async (
       !store_channel ||
       !store_category ||
       !sales_rep ||
-      !location ||
-      !user_id
+      !location
     ) {
-      res.status(400).json({ error: "Të gjitha fushat janë të nevojshme!" });
+      res.status(400).json({
+        error: "Të gjitha fushat përveq përdoruesit janë të nevojshme!",
+      });
       return;
     }
+
+    const userIdToInsert =
+      user_id === "" || user_id === undefined ? null : user_id;
 
     const query = `
       INSERT INTO stores 
@@ -150,7 +154,7 @@ export const createStore = async (
         store_code,
         store_channel,
         store_category,
-        user_id,
+        userIdToInsert,
         sales_rep,
         location,
       ]);
@@ -236,12 +240,17 @@ export const updateStore = async (
       !store_channel ||
       !store_category ||
       !sales_rep ||
-      !location ||
-      !user_id
+      !location
     ) {
-      res.status(400).json({ error: "Të gjitha fushat janë të nevojshme!" });
+      res.status(400).json({
+        error: "Të gjitha fushat përveq përdoruesit janë të nevojshme!",
+      });
       return;
     }
+
+    const userIdToUpdate =
+      user_id === "" || user_id === undefined || user_id === 0 ? null : user_id;
+
     const query = `
       UPDATE stores
       SET store_name = ?, store_code = ?, store_channel = ?,
@@ -257,7 +266,7 @@ export const updateStore = async (
         store_category,
         sales_rep,
         location,
-        user_id,
+        userIdToUpdate,
         store_id,
       ]);
     if ((result as any).affectedRows === 0) {
