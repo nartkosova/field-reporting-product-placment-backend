@@ -62,6 +62,7 @@ export const getPodravkaFacingsReport = async (
       categories,
       start_date,
       end_date,
+      business_unit,
       limit,
       offset,
     } = req.query;
@@ -85,6 +86,10 @@ export const getPodravkaFacingsReport = async (
       conditions.push(`pf.user_id IN (${userIds.map(() => "?").join(",")})`);
       values.push(...userIds);
     }
+    if (business_unit) {
+      conditions.push(`pp.business_unit = ?`);
+      values.push(business_unit);
+    }
     if (storeIds.length) {
       conditions.push(`pf.store_id IN (${storeIds.map(() => "?").join(",")})`);
       values.push(...storeIds);
@@ -106,7 +111,7 @@ export const getPodravkaFacingsReport = async (
       : "";
 
     const countQuery = `
-      SELECT COUNT(*) as total
+      SELECT COUNT(DISTINCT pp.product_id) AS total
       FROM podravka_facings pf
       JOIN podravka_products pp ON pf.product_id = pp.product_id
       JOIN stores s ON pf.store_id = s.store_id
@@ -138,16 +143,14 @@ export const getPodravkaFacingsReport = async (
 
     const dataQuery = `
       SELECT 
-        pf.podravka_facings_id,
-        pf.facings_count,
-        pf.created_at,
-        pf.category AS facing_category,
+        pp.product_id,
+        pp.business_unit,
+
         pp.name AS product_name,
         pp.category AS product_category,
         pr.category_rank AS product_category_rank,
         pr.category_sales_share,
-        s.store_name,
-        u.user AS reported_by
+        SUM(pf.facings_count) AS total_facings
       FROM podravka_facings pf
       JOIN podravka_products pp ON pf.product_id = pp.product_id
       LEFT JOIN product_rankings pr ON pr.product_id = pp.product_id
@@ -159,7 +162,8 @@ export const getPodravkaFacingsReport = async (
       JOIN stores s ON pf.store_id = s.store_id
       JOIN users u ON pf.user_id = u.user_id
       ${whereClause}
-      ORDER BY pf.created_at DESC
+      GROUP BY pp.product_id, pp.name, pp.category, pr.category_rank, pr.category_sales_share, pp.business_unit
+      ORDER BY total_facings DESC
       LIMIT ? OFFSET ?
     `;
 
@@ -169,7 +173,7 @@ export const getPodravkaFacingsReport = async (
 
     const enrichedResults = (results as RowDataPacket[]).map((row) => {
       const total = categoryTotals[row.product_category] || 1;
-      const percentage = (row.facings_count / total) * 100;
+      const percentage = (row.total_facings / total) * 100;
       return {
         ...row,
         facing_percentage_in_category: parseFloat(percentage.toFixed(2)),
