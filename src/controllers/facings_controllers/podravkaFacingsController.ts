@@ -25,25 +25,32 @@ export const getUserPPLBatches = async (
     const user_id = req.user?.user_id;
 
     if (!user_id) {
-      res.status(401).json({ error: "Nuk jeni te autoreziaur" });
+      res.status(401).json({ error: "Nuk jeni te autorizuar" });
       return;
     }
+
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = parseInt(req.query.offset as string) || 0;
 
     const query = `
       SELECT 
         pf.batch_id,
         s.store_name,
         pf.category,
-        pf.created_at as created_at,
+        pf.created_at,
         COUNT(*) as product_count
       FROM podravka_facings pf
       JOIN stores s ON pf.store_id = s.store_id
       WHERE pf.user_id = ? AND batch_id IS NOT NULL
       GROUP BY pf.batch_id, pf.store_id, pf.category, pf.created_at
       ORDER BY pf.created_at DESC
+      LIMIT ? OFFSET ?
     `;
 
-    const [rows] = await db.promise().query<RowDataPacket[]>(query, [user_id]);
+    const [rows] = await db
+      .promise()
+      .query<RowDataPacket[]>(query, [user_id, limit, offset]);
+
     res.json(rows);
   } catch (error) {
     console.error("Error fetching PPL batches:", error);

@@ -40,21 +40,21 @@ export const getFacingsWithCompetitors = async (
       }
     }
 
-    const userIds = Array.isArray(user_id) 
-      ? user_id.filter(id => id !== 'all') 
-      : user_id && user_id !== 'all' 
-        ? [user_id] 
-        : [];
+    const userIds = Array.isArray(user_id)
+      ? user_id.filter((id) => id !== "all")
+      : user_id && user_id !== "all"
+      ? [user_id]
+      : [];
     const storeIds = Array.isArray(store_id)
-      ? store_id.filter(id => id !== 'all')
-      : store_id && store_id !== 'all'
-        ? [store_id]
-        : [];
+      ? store_id.filter((id) => id !== "all")
+      : store_id && store_id !== "all"
+      ? [store_id]
+      : [];
     const categories = Array.isArray(category)
-      ? category.filter(cat => cat !== 'all')
-      : category && category !== 'all'
-        ? [category]
-        : [];
+      ? category.filter((cat) => cat !== "all")
+      : category && category !== "all"
+      ? [category]
+      : [];
     if (businessUnitCategories.length) {
       if (categories.length) {
         const filtered = categories.filter((cat) =>
@@ -106,9 +106,9 @@ export const getFacingsWithCompetitors = async (
     const parsedOffset = parseInt(offset as string) || 0;
 
     // Determine which columns to include based on filters
-    const hasUserFilter = Array.isArray(user_id) ? user_id.includes('all') : user_id === 'all';
-    const hasStoreFilter = Array.isArray(store_id) ? store_id.includes('all') : store_id === 'all';
-    const hasCategoryFilter = Array.isArray(category) ? category.includes('all') : category === 'all';
+    const hasUserFilter = !!user_id;
+    const hasStoreFilter = !!store_id;
+    const hasCategoryFilter = !!category;
     const hasDateFilter = !!(start_date && end_date);
     const hasBusinessUnitFilter = !!business_unit;
 
@@ -245,32 +245,32 @@ export const getCompetitorFacingByUserId = async (
 ): Promise<void> => {
   const user_id = req.user?.user_id;
   if (!user_id) {
-    res.status(401).json({ error: "Nuk jeni te autoreziaur" });
+    res.status(401).json({ error: "Nuk jeni të autorizuar" });
     return;
   }
+
+  const limit = parseInt(req.query.limit as string) || 20;
+  const offset = parseInt(req.query.offset as string) || 0;
+
   try {
     const query = `
       SELECT 
         cf.batch_id,
         s.store_name,
         cf.category,
-        cf.created_at as created_at,
+        cf.created_at,
         COUNT(*) as product_count
       FROM competitor_facings cf
       JOIN stores s ON cf.store_id = s.store_id
-      WHERE cf.user_id = ? AND batch_id IS NOT NULL
+      WHERE cf.user_id = ? AND cf.batch_id IS NOT NULL
       GROUP BY cf.batch_id, cf.store_id, cf.category, cf.created_at
       ORDER BY cf.created_at DESC
+      LIMIT ? OFFSET ?
     `;
 
     const [results] = await db
       .promise()
-      .query<RowDataPacket[]>(query, [user_id]);
-
-    if (results.length === 0) {
-      res.status(404).json({ error: "No facings found for this user." });
-      return;
-    }
+      .query<RowDataPacket[]>(query, [user_id, limit, offset]);
 
     res.json(results);
   } catch (error) {
