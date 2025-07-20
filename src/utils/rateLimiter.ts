@@ -8,7 +8,7 @@ export const generalLimiter = rateLimit({
 
 export const authLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 10,
+  max: 15,
   message:
     "Keni bërë shumë kërkesa për autentifikim, ju lutemi provoni përsëri më vonë",
 });

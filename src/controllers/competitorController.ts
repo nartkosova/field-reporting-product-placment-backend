@@ -51,7 +51,7 @@ export const getCompetitorByCategory = async (
   try {
     const { category } = req.params;
     if (!category) {
-      res.status(400).json({ error: "Category is required" });
+      res.status(400).json({ error: "Kategoria detyrohet" });
       return;
     }
     const query = `
@@ -177,7 +177,8 @@ export const createCompetitorBrand = async (
 
     if (!brand_name || !Array.isArray(categories) || categories.length === 0) {
       res.status(400).json({
-        error: "Brand name and at least one category must be provided.",
+        error:
+          "Emri i konkurrentit dhe të paktën një kategori është e detyrueshme!",
       });
       return;
     }

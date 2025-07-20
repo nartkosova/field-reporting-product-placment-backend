@@ -52,7 +52,7 @@ export const uploadReportPhoto = async (
       ]);
 
     res.status(201).json({
-      message: "Photo uploaded successfully",
+      message: "Fotoja u ngarkua me sukses",
       url: photoUrl,
     });
   } catch (error) {
@@ -158,7 +158,7 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
     res.json({ data: results, total });
   } catch (err) {
     console.error("Error fetching report photos:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Server error" });
   }
 };
 
@@ -309,7 +309,11 @@ export const updateReportPhoto = async (
   const { photo_type, category, store_id, photo_description } = req.body;
 
   if (!photo_id || !photo_type || !category || !store_id) {
-    res.status(400).json({ error: "Missing required fields" });
+    res
+      .status(400)
+      .json({
+        error: "Detyrohen te mbushen të gjitha fushat përveq përshkrimit!",
+      });
     return;
   }
 
@@ -359,13 +363,11 @@ export const updateReportPhoto = async (
       ]);
 
     if ((result as any).affectedRows === 0) {
-      res.status(404).json({ error: "Photo not found" });
+      res.status(404).json({ error: "Fotoja nuk egziston" });
       return;
     }
 
-    res
-      .status(200)
-      .json({ message: "Photo updated successfully", url: newPhotoUrl });
+    res.status(200).json({ message: "Fotoja u ", url: newPhotoUrl });
   } catch (err) {
     console.error("Error updating report photo:", err);
     res.status(500).json({ error: "Internal server error" });
