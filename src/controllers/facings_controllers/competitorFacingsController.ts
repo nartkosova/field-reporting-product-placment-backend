@@ -40,15 +40,19 @@ export const getFacingsWithCompetitors = async (
       }
     }
 
-    const userIds = Array.isArray(user_id) ? user_id : user_id ? [user_id] : [];
+    const userIds = Array.isArray(user_id)
+      ? user_id.filter((id) => id !== "all")
+      : user_id && user_id !== "all"
+      ? [user_id]
+      : [];
     const storeIds = Array.isArray(store_id)
-      ? store_id
-      : store_id
+      ? store_id.filter((id) => id !== "all")
+      : store_id && store_id !== "all"
       ? [store_id]
       : [];
     const categories = Array.isArray(category)
-      ? category
-      : category
+      ? category.filter((cat) => cat !== "all")
+      : category && category !== "all"
       ? [category]
       : [];
     if (businessUnitCategories.length) {
@@ -101,24 +105,60 @@ export const getFacingsWithCompetitors = async (
     const parsedLimit = parseInt(limit as string) || 20;
     const parsedOffset = parseInt(offset as string) || 0;
 
+    // Determine which columns to include based on filters
+    const hasUserFilter = !!user_id;
+    const hasStoreFilter = !!store_id;
+    const hasCategoryFilter = !!category;
+    const hasDateFilter = !!(start_date && end_date);
+    const hasBusinessUnitFilter = !!business_unit;
+
+    const podravkaSelectFields = [
+      "pf.user_id",
+      "u.user",
+      "pf.store_id",
+      "s.store_name",
+      "pf.category",
+      "pp.business_unit",
+      "DATE(pf.created_at) AS report_date",
+      "MAX(pf.created_at) AS created_at",
+      "SUM(pf.facings_count) AS total_facings",
+    ];
+
+    const finalSelectFields = [
+      "pd.user",
+      "pd.user_id",
+      "pd.store_name",
+      "pd.store_id",
+      "pd.category",
+      "pd.created_at",
+      "pd.business_unit",
+      "pd.total_facings",
+      "COALESCE(cd.competitors, JSON_OBJECT()) AS competitors",
+      "COALESCE(cd.total_competitor_facings, 0) AS total_competitor_facings",
+    ];
+
+    const podravkaGroupByFields = [
+      "pf.user_id",
+      "pf.store_id",
+      "pf.category",
+      "report_date",
+      "pp.business_unit",
+    ];
+
+    if (!hasUserFilter) {
+      podravkaGroupByFields.unshift("u.user");
+    }
+
     const query = `
      WITH podravka_data AS (
   SELECT 
-    pf.user_id,
-    u.user,
-    pf.store_id,
-    s.store_name,
-    pf.category,
-    pp.business_unit,
-    DATE(pf.created_at) AS report_date,
-    MAX(pf.created_at) AS created_at,
-    SUM(pf.facings_count) AS total_facings
+    ${podravkaSelectFields.join(",\n    ")}
   FROM podravka_facings pf
   JOIN users u ON pf.user_id = u.user_id
   JOIN stores s ON pf.store_id = s.store_id
   JOIN podravka_products pp ON pf.product_id = pp.product_id
   ${whereClause}
-  GROUP BY pf.user_id, pf.store_id, pf.category, report_date, pp.business_unit
+  GROUP BY ${podravkaGroupByFields.join(", ")}
 ),
 competitor_data AS (
   SELECT 
@@ -133,16 +173,7 @@ competitor_data AS (
   GROUP BY cf.user_id, cf.store_id, cf.category, report_date
 )
 SELECT 
-  pd.user,
-  pd.user_id,
-  pd.store_name,
-  pd.store_id,
-  pd.category,
-  pd.created_at,
-  pd.business_unit,
-  pd.total_facings,
-  COALESCE(cd.competitors, JSON_OBJECT()) AS competitors,
-  COALESCE(cd.total_competitor_facings, 0) AS total_competitor_facings
+  ${finalSelectFields.join(",\n  ")}
 FROM podravka_data pd
 LEFT JOIN competitor_data cd 
   ON pd.user_id = cd.user_id 
@@ -170,18 +201,35 @@ LIMIT ? OFFSET ?
         simplified[brand] = (simplified[brand] || 0) + parsed[key];
       }
 
-      return {
-        user: row.user,
-        user_id: row.user_id,
-        store_name: row.store_name,
-        store_id: row.store_id,
-        category: row.category,
-        created_at: row.created_at,
-        business_unit: row.business_unit,
+      const responseObj: any = {
         total_facings: row.total_facings,
         competitors: simplified,
         total_competitor_facings: row.total_competitor_facings,
       };
+
+      if (hasUserFilter) {
+        responseObj.user = row.user;
+        responseObj.user_id = row.user_id;
+      }
+
+      if (hasStoreFilter) {
+        responseObj.store_name = row.store_name;
+        responseObj.store_id = row.store_id;
+      }
+
+      if (hasCategoryFilter) {
+        responseObj.category = row.category;
+      }
+
+      if (hasDateFilter) {
+        responseObj.created_at = row.created_at;
+      }
+
+      if (hasBusinessUnitFilter) {
+        responseObj.business_unit = row.business_unit;
+      }
+
+      return responseObj;
     });
 
     res.json({ data: formatted, total });
@@ -197,32 +245,32 @@ export const getCompetitorFacingByUserId = async (
 ): Promise<void> => {
   const user_id = req.user?.user_id;
   if (!user_id) {
-    res.status(401).json({ error: "Nuk jeni te autoreziaur" });
+    res.status(401).json({ error: "Nuk jeni të autorizuar" });
     return;
   }
+
+  const limit = parseInt(req.query.limit as string) || 20;
+  const offset = parseInt(req.query.offset as string) || 0;
+
   try {
     const query = `
       SELECT 
         cf.batch_id,
         s.store_name,
         cf.category,
-        cf.created_at as created_at,
+        cf.created_at,
         COUNT(*) as product_count
       FROM competitor_facings cf
       JOIN stores s ON cf.store_id = s.store_id
-      WHERE cf.user_id = ? AND batch_id IS NOT NULL
+      WHERE cf.user_id = ? AND cf.batch_id IS NOT NULL
       GROUP BY cf.batch_id, cf.store_id, cf.category, cf.created_at
       ORDER BY cf.created_at DESC
+      LIMIT ? OFFSET ?
     `;
 
     const [results] = await db
       .promise()
-      .query<RowDataPacket[]>(query, [user_id]);
-
-    if (results.length === 0) {
-      res.status(404).json({ error: "No facings found for this user." });
-      return;
-    }
+      .query<RowDataPacket[]>(query, [user_id, limit, offset]);
 
     res.json(results);
   } catch (error) {
