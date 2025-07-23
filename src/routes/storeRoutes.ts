@@ -8,6 +8,7 @@ import {
   deleteStore,
   updateStore,
   getStoresWithUserId,
+  getOtherStoreProducts,
 } from "../controllers/storeController";
 import middleware from "../utils/middleware";
 const router = express.Router();
@@ -33,6 +34,11 @@ router.get(
   "/:store_id/products",
   middleware.authorizeRole(["admin", "employee"]),
   getStoreProducts
+);
+router.get(
+  "/:store_id/other-products",
+  middleware.authorizeRole(["admin", "employee"]),
+  getOtherStoreProducts
 );
 router.put("/:store_id", middleware.authorizeRole(["admin"]), updateStore);
 router.delete("/:store_id", middleware.authorizeRole(["admin"]), deleteStore);

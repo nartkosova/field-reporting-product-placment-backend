@@ -30,7 +30,7 @@ export const getStoresWithUserId = async (
 ): Promise<void> => {
   try {
     const query =
-      "SELECT store_id, store_name, store_category FROM stores WHERE user_id IS NOT NULL ORDER BY store_name ASC";
+      "SELECT store_id, store_name, store_category, user_id FROM stores WHERE user_id IS NOT NULL ORDER BY store_name ASC";
     const [stores] = await db.promise().query<RowDataPacket[]>(query);
     res.json(stores);
   } catch (error) {
@@ -210,6 +210,57 @@ export const getStoreProducts = async (
     res.json(products);
   } catch (error) {
     console.error("Error fetching store products:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getOtherStoreProducts = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { store_id } = req.params;
+
+    const storeQuery = "SELECT store_category FROM stores WHERE store_id = ?";
+    const [storeResult] = await db
+      .promise()
+      .query<RowDataPacket[]>(storeQuery, [store_id]);
+
+    if (storeResult.length === 0) {
+      res.status(404).json({ error: "Shitorja nuk ekziston" });
+      return;
+    }
+
+    const storeCategory = storeResult[0].store_category;
+    const categoryOrder = ["A", "B", "C", "D", "E", "F", "G"];
+    const storeIndex = categoryOrder.indexOf(storeCategory);
+
+    if (storeIndex === -1) {
+      res.status(400).json({ error: "Invalid store category" });
+      return;
+    }
+
+    // if category is A, no need to fetch unlisted products
+    if (storeIndex === 0) {
+      res.status(204).send();
+      return;
+    }
+
+    const excludedCategories = categoryOrder.slice(0, storeIndex);
+    const placeholders = excludedCategories.map(() => "?").join(",");
+
+    const query = `
+      SELECT product_id, category, name, product_category 
+      FROM podravka_products 
+      WHERE product_category IN (${placeholders})
+    `;
+    const [products] = await db
+      .promise()
+      .query<RowDataPacket[]>(query, excludedCategories);
+
+    res.json(products);
+  } catch (error) {
+    console.error("Error fetching unlisted products:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };

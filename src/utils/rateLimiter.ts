@@ -21,7 +21,7 @@ export const uploadLimiter = rateLimit({
 
 export const userCreationLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000,
-  max: 3,
+  max: 10,
   message:
     "Keni arritur limitin e krijimit të përdoruesve, ju lutemi provoni përsëri nesër",
 });

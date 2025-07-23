@@ -222,6 +222,7 @@ export const batchCreatePodravkaFacings = async (
         product_id,
         category,
         facings_count,
+        is_listed = true,
       } = facing;
       if (payloadUserId !== user_id) {
         res.status(403).json({
@@ -271,10 +272,11 @@ export const batchCreatePodravkaFacings = async (
       f.category,
       f.facings_count,
       batchId,
+      f.is_listed ?? true,
     ]);
 
     const query =
-      "INSERT INTO podravka_facings (user_id, store_id, product_id, category, facings_count, batch_id) VALUES ?";
+      "INSERT INTO podravka_facings (user_id, store_id, product_id, category, facings_count, batch_id, is_listed) VALUES ?";
 
     const [result] = await db.promise().query<OkPacket>(query, [values]);
 
