@@ -3,13 +3,15 @@ import {
   createUser,
   deleteUser,
   getUserById,
-  getUsers,
+  getAllUsers,
+  getEmployees,
   loginUser,
   updateUser,
   updateUserPassword,
 } from "../controllers/userController";
 import middleware from "../utils/middleware";
 import { authLimiter, userCreationLimiter } from "../utils/rateLimiter";
+import { get } from "http";
 
 const router = express.Router();
 
@@ -20,7 +22,16 @@ router.get(
   middleware.userExtractor,
   middleware.authorizeRole(["admin", "employee"]),
   middleware.rejectManualUserId,
-  getUsers
+  getEmployees
+);
+router.get(
+  "/all",
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  middleware.authorizeRole(["admin"]),
+  middleware.rejectManualUserId,
+  getAllUsers
 );
 router.get(
   "/:user_id",

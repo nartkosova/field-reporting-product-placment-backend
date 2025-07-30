@@ -64,7 +64,7 @@ export const uploadReportPhoto = async (
 export const getAllReportPhotos = async (req: Request, res: Response) => {
   try {
     const {
-      limit = "50",
+      limit = "300",
       offset = "0",
       user_ids,
       store_ids,
@@ -309,11 +309,9 @@ export const updateReportPhoto = async (
   const { photo_type, category, store_id, photo_description } = req.body;
 
   if (!photo_id || !photo_type || !category || !store_id) {
-    res
-      .status(400)
-      .json({
-        error: "Detyrohen te mbushen të gjitha fushat përveq përshkrimit!",
-      });
+    res.status(400).json({
+      error: "Detyrohen te mbushen të gjitha fushat përveq përshkrimit!",
+    });
     return;
   }
 

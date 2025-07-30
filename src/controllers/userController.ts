@@ -4,7 +4,6 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { QueryError, RowDataPacket, OkPacket } from "mysql2";
 import dotenv from "dotenv";
-import { get } from "http";
 dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
@@ -120,7 +119,21 @@ export const getUserById = async (
   );
 };
 
-export const getUsers = (req: Request, res: Response): void => {
+export const getEmployees = (req: Request, res: Response): void => {
+  const query = `
+        SELECT user_id, user, created_at
+        FROM users
+        WHERE role = 'employee'
+        ORDER BY user ASC
+      `;
+
+  db.query<RowDataPacket[]>(query, (err: QueryError | null, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(results);
+    return;
+  });
+};
+export const getAllUsers = (req: Request, res: Response): void => {
   const query = "SELECT user_id, user, created_at FROM users ORDER BY user ASC";
 
   db.query<RowDataPacket[]>(query, (err: QueryError | null, results) => {
