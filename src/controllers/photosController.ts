@@ -232,6 +232,9 @@ export const getReportPhotosByUserId = async (
   }
 
   try {
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = parseInt(req.query.offset as string) || 0;
+
     const query = `
       SELECT
         rp.photo_id,
@@ -250,9 +253,11 @@ export const getReportPhotosByUserId = async (
       JOIN stores s ON rp.store_id = s.store_id
       WHERE rp.user_id = ?
       ORDER BY rp.created_at DESC
+      LIMIT ? OFFSET ?
     `;
 
-    const [results] = await db.promise().query(query, [user_id]);
+    const [results] = await db.promise().query(query, [user_id, limit, offset]);
+
     res.json(results);
   } catch (err) {
     console.error("Error fetching report photos by user ID:", err);
