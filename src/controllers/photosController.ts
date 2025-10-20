@@ -377,8 +377,9 @@ export const updateReportPhoto = async (
   }
 };
 
-export const deleteReportPhoto: RequestHandler = async (req, res) => {
+export const deleteReportPhoto = async (req: Request, res: Response) => {
   const { photo_id } = req.params;
+  const authUser = req.user as { user_id: number; role: string } | undefined;
 
   if (!photo_id) {
     res.status(400).json({ error: "Photo ID is required" });
@@ -386,37 +387,65 @@ export const deleteReportPhoto: RequestHandler = async (req, res) => {
   }
 
   try {
-    const [rows] = (await db
-      .promise()
-      .query("SELECT photo_url FROM report_photos WHERE photo_id = ?", [
-        photo_id,
-      ])) as [RowDataPacket[], any];
+    const isAdmin = authUser?.role === "admin";
+
+    const whereSql = isAdmin
+      ? "SELECT photo_url, user_id FROM report_photos WHERE photo_id = ?"
+      : "SELECT photo_url, user_id FROM report_photos WHERE photo_id = ? AND user_id = ?";
+
+    const params: any[] = isAdmin ? [photo_id] : [photo_id, authUser?.user_id];
+
+    const [rows] = (await db.promise().query(whereSql, params)) as [
+      RowDataPacket[],
+      any
+    ];
 
     if (rows.length === 0) {
       res.status(404).json({ error: "Fotoja nuk egziston" });
       return;
     }
 
-    const photoUrl = rows[0].photo_url;
+    const photoUrl = rows[0].photo_url as string;
 
     const publicId = extractPublicId(photoUrl);
-    if (!publicId) {
-      res.status(400).json({ error: "Foto URL nuk esht korrekt" });
-      return;
+    if (publicId) {
+      try {
+        const cloudRes = await cloudinary.uploader.destroy(publicId, {
+          invalidate: true,
+        });
+        const result = (cloudRes && cloudRes.result) || "";
+        if (result !== "ok" && result !== "not found") {
+          console.warn(
+            `Cloudinary delete returned non-ok for ${publicId}:`,
+            result
+          );
+        }
+      } catch (cloudErr) {
+        console.warn(
+          "Cloudinary delete error (continuing with DB delete):",
+          cloudErr
+        );
+      }
+    } else {
+      console.warn(
+        "Could not extract Cloudinary publicId from URL, skipping cloud delete."
+      );
     }
 
-    const cloudRes = await cloudinary.uploader.destroy(publicId, {
-      invalidate: true,
-    });
+    // Delete the DB record
+    const deleteSql = isAdmin
+      ? "DELETE FROM report_photos WHERE photo_id = ?"
+      : "DELETE FROM report_photos WHERE photo_id = ? AND user_id = ?";
+    const deleteParams: any[] = isAdmin
+      ? [photo_id]
+      : [photo_id, authUser?.user_id];
+    const [delRes] = await db.promise().query(deleteSql, deleteParams);
+    const affected = (delRes as any).affectedRows || 0;
 
-    if (cloudRes.result !== "ok") {
-      res.status(500).json({ error: "Deshtim gjat fshirjes se fotos" });
+    if (affected === 0) {
+      res.status(404).json({ error: "Fotoja nuk egziston" });
       return;
     }
-
-    await db
-      .promise()
-      .query("DELETE FROM report_photos WHERE photo_id = ?", [photo_id]);
 
     res.status(200).json({ message: "Fotoja u fshi me sukses" });
   } catch (err) {
