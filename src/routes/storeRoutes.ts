@@ -9,6 +9,8 @@ import {
   updateStore,
   getStoresWithUserId,
   getOtherStoreProducts,
+  getVFSStores,
+  getProexStores,
 } from "../controllers/storeController";
 import middleware from "../utils/middleware";
 const router = express.Router();
@@ -28,6 +30,16 @@ router.get(
   "/user/:user_id",
   middleware.authorizeRole(["employee", "admin"]),
   getStoreByUserId
+);
+router.get(
+  "/single/vfs",
+  middleware.authorizeRole(["admin", "employee"]),
+  getVFSStores
+);
+router.get(
+  "/single/proex",
+  middleware.authorizeRole(["admin", "employee"]),
+  getProexStores
 );
 router.post("/", middleware.authorizeRole(["admin"]), createStore);
 router.get(

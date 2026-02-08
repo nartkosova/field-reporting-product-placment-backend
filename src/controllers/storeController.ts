@@ -265,6 +265,38 @@ export const getOtherStoreProducts = async (
   }
 };
 
+export const getVFSStores = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const query = `
+      SELECT store_id, store_name, store_code, store_category FROM stores WHERE store_name LIKE '%VFS%' ORDER BY store_name ASC
+    `;
+    const [stores] = await db.promise().query<RowDataPacket[]>(query);
+    res.json(stores);
+  } catch (error) {
+    console.error("Error fetching Viva Fresh stores:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+export const getProexStores = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const query = `
+      SELECT store_id, store_name, store_code, store_category FROM stores WHERE store_name LIKE '%PROEX%' ORDER BY store_name ASC
+    `;
+    const [stores] = await db.promise().query<RowDataPacket[]>(query);
+    res.json(stores);
+  } catch (error) {
+    console.error("Error fetching Interex stores:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
 export const updateStore = async (
   req: Request,
   res: Response

@@ -70,6 +70,8 @@ export const getFacingsWithCompetitors = async (
         categories.push(...businessUnitCategories);
       }
     }
+    conditions.push(`pf.record_type = 'FACINGS'`);
+
     if (userIds.length) {
       conditions.push(`pf.user_id IN (${userIds.map(() => "?").join(",")})`);
       values.push(...userIds);

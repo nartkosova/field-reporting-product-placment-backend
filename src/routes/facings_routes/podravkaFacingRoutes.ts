@@ -7,6 +7,7 @@ import {
   updatePodravkaFacingsBatch,
   deletePodravkaFacingBatch,
   getPodravkaFacingsReport,
+  getPodravkaPresenceReport,
 } from "../../controllers/facings_controllers/podravkaFacingsController";
 import middleware from "../../utils/middleware";
 
@@ -26,6 +27,11 @@ router.get(
   "/podravka-facing/report",
   middleware.authorizeRole(["admin", "employee"]),
   getPodravkaFacingsReport
+);
+router.get(
+  "/podravka-facing/presence-report",
+  middleware.authorizeRole(["admin", "employee"]),
+  getPodravkaPresenceReport
 );
 router.get(
   "/podravka-facing/user-batches",

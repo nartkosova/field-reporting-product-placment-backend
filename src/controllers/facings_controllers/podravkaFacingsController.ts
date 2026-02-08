@@ -29,6 +29,7 @@ export const getUserPPLBatches = async (
       return;
     }
 
+    // Ensure limit and offset are numbers (important for LIMIT/OFFSET syntax in some DBs)
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = parseInt(req.query.offset as string) || 0;
 
@@ -41,7 +42,9 @@ export const getUserPPLBatches = async (
         COUNT(*) as product_count
       FROM podravka_facings pf
       JOIN stores s ON pf.store_id = s.store_id
-      WHERE pf.user_id = ? AND batch_id IS NOT NULL
+      WHERE pf.user_id = ? 
+        AND pf.batch_id IS NOT NULL 
+        AND pf.record_type != 'PRESENCE'
       GROUP BY pf.batch_id, pf.store_id, pf.category, pf.created_at
       ORDER BY pf.created_at DESC
       LIMIT ? OFFSET ?
@@ -88,6 +91,8 @@ export const getPodravkaFacingsReport = async (
       : categories
       ? [categories]
       : [];
+
+    conditions.push(`pf.record_type = 'FACINGS'`);
 
     if (userIds.length) {
       conditions.push(`pf.user_id IN (${userIds.map(() => "?").join(",")})`);
@@ -152,6 +157,8 @@ export const getPodravkaFacingsReport = async (
       SELECT 
         pp.product_id,
         pp.business_unit,
+        pp.podravka_code,
+        pp.elkos_code,
 
         pp.name AS product_name,
         pp.category AS product_category,
@@ -169,7 +176,7 @@ export const getPodravkaFacingsReport = async (
       JOIN stores s ON pf.store_id = s.store_id
       JOIN users u ON pf.user_id = u.user_id
       ${whereClause}
-      GROUP BY pp.product_id, pp.name, pp.category, pr.category_rank, pr.category_sales_share, pp.business_unit
+      GROUP BY pp.product_id, pp.name, pp.category, pr.category_rank, pr.category_sales_share, pp.business_unit, pp.podravka_code, pp.elkos_code
       ORDER BY total_facings DESC
       LIMIT ? OFFSET ?
     `;
@@ -190,6 +197,169 @@ export const getPodravkaFacingsReport = async (
     res.json({ data: enrichedResults, total });
   } catch (err) {
     console.error("Error generating Podravka Facings Report:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+export const getPodravkaPresenceReport = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = (page - 1) * limit;
+
+    let storeTypes: string[] = [];
+    if (req.query.storeType) {
+      storeTypes = Array.isArray(req.query.storeType)
+        ? (req.query.storeType as string[])
+        : [req.query.storeType as string];
+    }
+
+    let nameConditions: string[] = [];
+
+    if (storeTypes.length === 0) {
+      nameConditions.push("store_name LIKE '%VFS%'");
+      nameConditions.push("store_name LIKE '%PROEX%'");
+    } else {
+      if (storeTypes.includes("VFS")) {
+        nameConditions.push("store_name LIKE '%VFS%'");
+      }
+      if (storeTypes.includes("PROEX")) {
+        nameConditions.push("store_name LIKE '%PROEX%'");
+      }
+    }
+
+    const whereClause =
+      nameConditions.length > 0
+        ? `(${nameConditions.join(" OR ")})`
+        : `(store_name LIKE '%VFS%' OR store_name LIKE '%PROEX%')`;
+
+    const storeQuery = `
+      SELECT store_id, store_name, store_code, store_category
+      FROM stores
+      WHERE ${whereClause}
+      ORDER BY store_name ASC
+    `;
+
+    const [stores] = await db.promise().query<RowDataPacket[]>(storeQuery);
+
+    if (stores.length === 0) {
+      res.json({
+        stores: [],
+        products: [],
+        data: {},
+        pagination: { totalProducts: 0 },
+      });
+      return;
+    }
+
+    const storeIds = stores.map((s) => s.store_id);
+    const storePlaceholders = storeIds.map(() => "?").join(",");
+
+    const latestBatchQuery = `
+      SELECT pf.store_id, pf.batch_id, pf.created_at
+      FROM podravka_facings pf
+      JOIN (
+        SELECT store_id, MAX(created_at) AS max_created_at
+        FROM podravka_facings
+        WHERE record_type = 'PRESENCE'
+          AND store_id IN (${storePlaceholders})
+        GROUP BY store_id
+      ) lb ON pf.store_id = lb.store_id AND pf.created_at = lb.max_created_at
+      WHERE pf.record_type = 'PRESENCE'
+      GROUP BY pf.store_id, pf.batch_id, pf.created_at
+    `;
+
+    const [latestBatches] = await db
+      .promise()
+      .query<RowDataPacket[]>(latestBatchQuery, storeIds);
+
+    const latestBatchByStore = new Map<number, string>();
+    latestBatches.forEach((row) => {
+      if (!latestBatchByStore.has(row.store_id)) {
+        latestBatchByStore.set(row.store_id, row.batch_id);
+      }
+    });
+
+    const [[{ total }]] = await db
+      .promise()
+      .query<RowDataPacket[]>(
+        "SELECT COUNT(*) as total FROM podravka_products"
+      );
+
+    const [products] = await db.promise().query<RowDataPacket[]>(
+      `SELECT product_id, name, category, product_category, business_unit, podravka_code, elkos_code
+       FROM podravka_products
+       ORDER BY name ASC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    let presenceRows: RowDataPacket[] = [];
+    if (latestBatchByStore.size && products.length > 0) {
+      const batchIds = Array.from(latestBatchByStore.values());
+      const productIds = products.map((p) => p.product_id);
+
+      const [rows] = await db.promise().query<RowDataPacket[]>(
+        `SELECT store_id, product_id, facings_count, is_listed
+         FROM podravka_facings
+         WHERE record_type = 'PRESENCE'
+           AND batch_id IN (${batchIds.map(() => "?").join(",")})
+           AND product_id IN (${productIds.map(() => "?").join(",")})`,
+        [...batchIds, ...productIds]
+      );
+      presenceRows = rows;
+    }
+
+    const presenceMap = new Map<string, RowDataPacket>();
+    for (const row of presenceRows) {
+      presenceMap.set(`${row.store_id}:${row.product_id}`, row);
+    }
+
+    const data: Record<string, Record<string, string>> = {};
+
+    for (const product of products) {
+      const row: Record<string, string> = {};
+      for (const store of stores) {
+        const batchId = latestBatchByStore.get(store.store_id);
+
+        if (!batchId) {
+          row[store.store_id] = "Not Yet Recorded";
+          continue;
+        }
+
+        const key = `${store.store_id}:${product.product_id}`;
+        const presence = presenceMap.get(key);
+
+        if (!presence) {
+          row[store.store_id] = "Not listed";
+          continue;
+        }
+
+        const listed =
+          presence.is_listed != null
+            ? Boolean(presence.is_listed)
+            : presence.facings_count === 1;
+        row[store.store_id] = listed ? "Listed" : "Not listed";
+      }
+      data[product.product_id] = row;
+    }
+
+    res.json({
+      stores,
+      products,
+      data,
+      pagination: {
+        totalProducts: total,
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        pageSize: products.length,
+      },
+    });
+  } catch (err) {
+    console.error("Error generating Podravka Presence Report:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -223,6 +393,7 @@ export const batchCreatePodravkaFacings = async (
         category,
         facings_count,
         is_listed = true,
+        record_type = "FACINGS",
       } = facing;
       if (payloadUserId !== user_id) {
         res.status(403).json({
@@ -242,15 +413,6 @@ export const batchCreatePodravkaFacings = async (
         return;
       }
 
-      const store = storeRows[0];
-
-      if (store.user_id !== user_id && req.user?.role !== "admin") {
-        res.status(403).json({
-          error: "You are not allowed to submit facings for this store",
-        });
-        return;
-      }
-
       if (
         !user_id ||
         !store_id ||
@@ -263,6 +425,19 @@ export const batchCreatePodravkaFacings = async (
           .json({ error: "Each facing must have all fields filled!" });
         return;
       }
+
+      if (record_type === "PRESENCE") {
+        if (facings_count !== 0 && facings_count !== 1) {
+          res.status(400).json({
+            error: "Presence entries must have facings_count of 0 or 1.",
+          });
+          return;
+        }
+        facing.is_listed = facings_count === 1;
+      } else if (record_type !== "FACINGS") {
+        res.status(400).json({ error: "Invalid record_type." });
+        return;
+      }
     }
 
     const values = facings.map((f) => [
@@ -273,10 +448,11 @@ export const batchCreatePodravkaFacings = async (
       f.facings_count,
       batchId,
       f.is_listed ?? true,
+      f.record_type ?? "FACINGS",
     ]);
 
     const query =
-      "INSERT INTO podravka_facings (user_id, store_id, product_id, category, facings_count, batch_id, is_listed) VALUES ?";
+      "INSERT INTO podravka_facings (user_id, store_id, product_id, category, facings_count, batch_id, is_listed, record_type) VALUES ?";
 
     const [result] = await db.promise().query<OkPacket>(query, [values]);
 

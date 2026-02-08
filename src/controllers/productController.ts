@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import db from "../models/db";
-import { QueryError, RowDataPacket, OkPacket } from "mysql2";
+import { RowDataPacket, OkPacket } from "mysql2";
 
 export const getProducts = async (
   req: Request,
@@ -9,13 +9,23 @@ export const getProducts = async (
   try {
     const { category } = req.query;
 
-    let query =
-      "SELECT product_id, name FROM podravka_products ORDER BY name ASC";
+    const page = req.query.page ? parseInt(req.query.page as string) : null;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : null;
+    const offset = page && limit ? (page - 1) * limit : 0;
+
+    let query = "SELECT product_id, name, category FROM podravka_products";
     const queryParams: any[] = [];
 
     if (category) {
       query += " WHERE category = ?";
       queryParams.push(category);
+    }
+
+    query += " ORDER BY name ASC";
+
+    if (limit) {
+      query += " LIMIT ? OFFSET ?";
+      queryParams.push(limit, offset);
     }
 
     const [products] = await db
