@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
+const ALLOWED_ROLES = new Set(["admin", "employee", "viewer"]);
 
 export const createUser = async (
   req: Request,
@@ -14,10 +15,14 @@ export const createUser = async (
 ): Promise<void> => {
   try {
     const { user, password, role } = req.body;
-    if (!user || !password) {
+    if (!user || !password || !role) {
       res.status(400).json({
         error: "Mbush te gjitha fushat e nevojshme: user, password dhe role",
       });
+      return;
+    }
+    if (!ALLOWED_ROLES.has(String(role))) {
+      res.status(400).json({ error: "Roli i pavlefshëm" });
       return;
     }
     if (password.length < 8) {
@@ -57,6 +62,10 @@ export const updateUser = async (
       res.status(400).json({
         error: "User, password dhe role jane të nevojshme",
       });
+      return;
+    }
+    if (!ALLOWED_ROLES.has(String(role))) {
+      res.status(400).json({ error: "Roli i pavlefshëm" });
       return;
     }
 
@@ -134,7 +143,8 @@ export const getEmployees = (req: Request, res: Response): void => {
   });
 };
 export const getAllUsers = (req: Request, res: Response): void => {
-  const query = "SELECT user_id, user, created_at FROM users ORDER BY user ASC";
+  const query =
+    "SELECT user_id, user, role, created_at FROM users ORDER BY user ASC";
 
   db.query<RowDataPacket[]>(query, (err: QueryError | null, results) => {
     if (err) return res.status(500).json({ error: err.message });

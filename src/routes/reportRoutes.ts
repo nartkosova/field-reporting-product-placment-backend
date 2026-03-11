@@ -5,6 +5,10 @@ import middleware from "../utils/middleware";
 const router = express.Router();
 
 router.post("/", middleware.authorizeRole(["admin", "employee"]), createReport);
-router.get("/", middleware.authorizeRole(["admin", "employee"]), getReports);
+router.get(
+  "/",
+  middleware.authorizeRole(["admin", "employee", "viewer"]),
+  getReports
+);
 
 export default router;

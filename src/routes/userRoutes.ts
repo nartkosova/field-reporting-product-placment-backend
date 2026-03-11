@@ -20,7 +20,7 @@ router.get(
   middleware.tokenExtractor,
   middleware.authenticateToken,
   middleware.userExtractor,
-  middleware.authorizeRole(["admin", "employee"]),
+  middleware.authorizeRole(["admin", "employee", "viewer"]),
   middleware.rejectManualUserId,
   getEmployees
 );

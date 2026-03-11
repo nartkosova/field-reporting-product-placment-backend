@@ -206,10 +206,22 @@ export const getPodravkaPresenceReport = async (
   res: Response
 ): Promise<void> => {
   try {
+    // 1. Get Parameters
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = (page - 1) * limit;
 
+    // New: Get Category Parameter
+    // We handle it as an array to allow selecting multiple categories if needed,
+    // or just a single string.
+    let categories: string[] = [];
+    if (req.query.category) {
+      categories = Array.isArray(req.query.category)
+        ? (req.query.category as string[])
+        : [req.query.category as string];
+    }
+
+    // Handle storeType
     let storeTypes: string[] = [];
     if (req.query.storeType) {
       storeTypes = Array.isArray(req.query.storeType)
@@ -217,18 +229,16 @@ export const getPodravkaPresenceReport = async (
         : [req.query.storeType as string];
     }
 
+    // 2. Fetch Stores (Existing Logic)
     let nameConditions: string[] = [];
-
     if (storeTypes.length === 0) {
       nameConditions.push("store_name LIKE '%VFS%'");
       nameConditions.push("store_name LIKE '%PROEX%'");
     } else {
-      if (storeTypes.includes("VFS")) {
+      if (storeTypes.includes("VFS"))
         nameConditions.push("store_name LIKE '%VFS%'");
-      }
-      if (storeTypes.includes("PROEX")) {
+      if (storeTypes.includes("PROEX"))
         nameConditions.push("store_name LIKE '%PROEX%'");
-      }
     }
 
     const whereClause =
@@ -258,6 +268,7 @@ export const getPodravkaPresenceReport = async (
     const storeIds = stores.map((s) => s.store_id);
     const storePlaceholders = storeIds.map(() => "?").join(",");
 
+    // 3. Fetch Latest Batches (Existing Logic)
     const latestBatchQuery = `
       SELECT pf.store_id, pf.batch_id, pf.created_at
       FROM podravka_facings pf
@@ -283,20 +294,45 @@ export const getPodravkaPresenceReport = async (
       }
     });
 
+    // 4. Fetch Paginated Products (UPDATED with Category Filter)
+
+    // Base queries
+    let productQuery = `
+      SELECT product_id, name, category, product_category, business_unit, podravka_code, elkos_code
+      FROM podravka_products
+    `;
+    let countQuery = "SELECT COUNT(*) as total FROM podravka_products";
+    const queryParams: any[] = [];
+
+    // Apply Category Filter if present
+    if (categories.length > 0) {
+      const categoryPlaceholders = categories.map(() => "?").join(",");
+      const whereCategory = `WHERE category IN (${categoryPlaceholders})`;
+
+      productQuery += ` ${whereCategory}`;
+      countQuery += ` ${whereCategory}`;
+
+      // Add categories to params for both count and select
+      categories.forEach((c) => queryParams.push(c));
+    }
+
+    // Add Ordering and Pagination to product query
+    productQuery += " ORDER BY name ASC LIMIT ? OFFSET ?";
+
+    // We need separate params array for the main query because it includes limit/offset
+    const productQueryParams = [...queryParams, limit, offset];
+
+    // Get Total Count (Filtered)
     const [[{ total }]] = await db
       .promise()
-      .query<RowDataPacket[]>(
-        "SELECT COUNT(*) as total FROM podravka_products"
-      );
+      .query<RowDataPacket[]>(countQuery, queryParams);
 
-    const [products] = await db.promise().query<RowDataPacket[]>(
-      `SELECT product_id, name, category, product_category, business_unit, podravka_code, elkos_code
-       FROM podravka_products
-       ORDER BY name ASC
-       LIMIT ? OFFSET ?`,
-      [limit, offset]
-    );
+    // Get Products (Filtered & Paginated)
+    const [products] = await db
+      .promise()
+      .query<RowDataPacket[]>(productQuery, productQueryParams);
 
+    // 5. Fetch Presence Data (Existing Logic)
     let presenceRows: RowDataPacket[] = [];
     if (latestBatchByStore.size && products.length > 0) {
       const batchIds = Array.from(latestBatchByStore.values());
@@ -318,6 +354,7 @@ export const getPodravkaPresenceReport = async (
       presenceMap.set(`${row.store_id}:${row.product_id}`, row);
     }
 
+    // 6. Build Matrix (Existing Logic)
     const data: Record<string, Record<string, string>> = {};
 
     for (const product of products) {

@@ -18,7 +18,7 @@ router.post(
 );
 router.get(
   "/with-competitors",
-  middleware.authorizeRole(["admin", "employee"]),
+  middleware.authorizeRole(["admin", "employee", "viewer"]),
   getFacingsWithCompetitors
 );
 router.get(

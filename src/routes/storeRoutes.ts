@@ -18,7 +18,7 @@ const router = express.Router();
 router.get("/", middleware.authorizeRole(["admin", "employee"]), getStores);
 router.get(
   "/user",
-  middleware.authorizeRole(["admin", "employee"]),
+  middleware.authorizeRole(["admin", "employee", "viewer"]),
   getStoresWithUserId
 );
 router.get(

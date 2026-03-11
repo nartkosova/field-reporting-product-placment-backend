@@ -14,7 +14,11 @@ const { upload } = require("../utils/cloudinary");
 
 const router = express.Router();
 
-router.get("/", middleware.authorizeRole(["admin"]), getAllReportPhotos);
+router.get(
+  "/",
+  middleware.authorizeRole(["admin", "employee", "viewer"]),
+  getAllReportPhotos
+);
 router.get(
   "/user",
   middleware.authorizeRole(["admin", "employee"]),

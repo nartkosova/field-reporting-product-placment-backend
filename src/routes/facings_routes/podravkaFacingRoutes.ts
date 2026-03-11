@@ -25,12 +25,12 @@ router.get(
 );
 router.get(
   "/podravka-facing/report",
-  middleware.authorizeRole(["admin", "employee"]),
+  middleware.authorizeRole(["admin", "employee", "viewer"]),
   getPodravkaFacingsReport
 );
 router.get(
   "/podravka-facing/presence-report",
-  middleware.authorizeRole(["admin", "employee"]),
+  middleware.authorizeRole(["admin", "employee", "viewer"]),
   getPodravkaPresenceReport
 );
 router.get(
