@@ -2,7 +2,9 @@ import express from "express";
 import {
   getAllPodravkaFacings,
   getUserPPLBatches,
+  getUserPresenceBatches,
   getPodravkaFacingsByBatchId,
+  getPodravkaPresenceByBatchId,
   batchCreatePodravkaFacings,
   updatePodravkaFacingsBatch,
   deletePodravkaFacingBatch,
@@ -24,6 +26,11 @@ router.get(
   getPodravkaFacingsByBatchId
 );
 router.get(
+  "/podravka-facing/presence-batch/:batchId",
+  middleware.authorizeRole(["admin", "employee"]),
+  getPodravkaPresenceByBatchId
+);
+router.get(
   "/podravka-facing/report",
   middleware.authorizeRole(["admin", "employee", "viewer"]),
   getPodravkaFacingsReport
@@ -37,6 +44,11 @@ router.get(
   "/podravka-facing/user-batches",
   middleware.authorizeRole(["admin", "employee"]),
   getUserPPLBatches
+);
+router.get(
+  "/podravka-facing/user-presence-batches",
+  middleware.authorizeRole(["admin", "employee"]),
+  getUserPresenceBatches
 );
 router.post(
   "/podravka-facing/batch",

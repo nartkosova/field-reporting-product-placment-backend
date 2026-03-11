@@ -61,6 +61,63 @@ export const getUserPPLBatches = async (
   }
 };
 
+export const getUserPresenceBatches = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const user_id = req.user?.user_id;
+
+    if (!user_id) {
+      res.status(401).json({ error: "Nuk jeni te autorizuar" });
+      return;
+    }
+
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const query = `
+      SELECT 
+        lb.batch_id,
+        s.store_name,
+        lb.created_at,
+        COUNT(pf.product_id) as product_count
+      FROM (
+        SELECT 
+          pf.store_id,
+          MAX(pf.created_at) AS created_at,
+          MAX(pf.batch_id) AS batch_id
+        FROM podravka_facings pf
+        JOIN (
+          SELECT store_id, MAX(created_at) AS max_created_at
+          FROM podravka_facings
+          WHERE user_id = ? 
+            AND record_type = 'PRESENCE'
+          GROUP BY store_id
+        ) latest ON pf.store_id = latest.store_id
+                 AND pf.created_at = latest.max_created_at
+        WHERE pf.user_id = ? 
+          AND pf.record_type = 'PRESENCE'
+        GROUP BY pf.store_id
+      ) lb
+      JOIN stores s ON lb.store_id = s.store_id
+      JOIN podravka_facings pf ON pf.batch_id = lb.batch_id
+      GROUP BY lb.batch_id, lb.store_id, lb.created_at, s.store_name
+      ORDER BY lb.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [rows] = await db
+      .promise()
+      .query<RowDataPacket[]>(query, [user_id, user_id, limit, offset]);
+
+    res.json(rows);
+  } catch (error) {
+    console.error("Error fetching presence batches:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 export const getPodravkaFacingsReport = async (
   req: Request,
   res: Response
@@ -542,16 +599,54 @@ export const updatePodravkaFacingsBatch = async (
       }
     }
 
-    const updatePromises = facings.map((f) =>
-      db.promise().query(
-        `UPDATE podravka_facings 
-           SET facings_count = ? 
-           WHERE batch_id = ? AND product_id = ? AND user_id = ?`,
-        [f.facings_count, batchId, f.product_id, user_id]
-      )
-    );
+    const connection = await db.promise().getConnection();
+    try {
+      await connection.beginTransaction();
 
-    await Promise.all(updatePromises);
+      const CHUNK_SIZE = 200;
+      for (let i = 0; i < facings.length; i += CHUNK_SIZE) {
+        const chunk = facings.slice(i, i + CHUNK_SIZE);
+        const productIds = chunk.map((f) => f.product_id);
+
+        const facingsCase = chunk
+          .map(() => "WHEN ? THEN ?")
+          .join(" ");
+        const listedCase = chunk
+          .map(() => "WHEN ? THEN ?")
+          .join(" ");
+
+        const query = `
+          UPDATE podravka_facings
+          SET 
+            facings_count = CASE product_id ${facingsCase} ELSE facings_count END,
+            is_listed = CASE 
+              WHEN record_type = 'PRESENCE' THEN CASE product_id ${listedCase} ELSE is_listed END
+              ELSE is_listed 
+            END
+          WHERE batch_id = ?
+            AND user_id = ?
+            AND product_id IN (${productIds.map(() => "?").join(",")})
+        `;
+
+        const params: any[] = [];
+        chunk.forEach((f) => {
+          params.push(f.product_id, f.facings_count);
+        });
+        chunk.forEach((f) => {
+          params.push(f.product_id, f.facings_count === 1);
+        });
+        params.push(batchId, user_id, ...productIds);
+
+        await connection.query(query, params);
+      }
+
+      await connection.commit();
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
 
     res.status(200).json({
       message: "Facings u perditsuan me sukses!",
@@ -618,6 +713,8 @@ export const getPodravkaFacingsByBatchId = async (
       pf.*,
       u.user AS user,
       s.store_name,
+      s.store_code,
+      s.store_category,
       p.name AS name
     FROM podravka_facings pf
     JOIN users u ON pf.user_id = u.user_id
@@ -638,6 +735,73 @@ export const getPodravkaFacingsByBatchId = async (
     res.json(results);
   } catch (error) {
     console.error("Error fetching facings by batch ID:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getPodravkaPresenceByBatchId = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { batchId } = req.params;
+
+    if (!batchId) {
+      res.status(400).json({ error: "Batch ID is required." });
+      return;
+    }
+
+    const storeQuery = `
+      SELECT 
+        s.store_id,
+        s.store_name,
+        s.store_code,
+        s.store_category,
+        pf.user_id,
+        pf.batch_id,
+        MAX(pf.created_at) AS created_at
+      FROM podravka_facings pf
+      JOIN stores s ON pf.store_id = s.store_id
+      WHERE pf.batch_id = ?
+        AND pf.record_type = 'PRESENCE'
+      GROUP BY s.store_id, s.store_name, s.store_code, s.store_category, pf.user_id, pf.batch_id
+    `;
+
+    const [storeRows] = await db
+      .promise()
+      .query<RowDataPacket[]>(storeQuery, [batchId]);
+
+    if (storeRows.length === 0) {
+      res.status(404).json({ error: "No presence found for this batch ID." });
+      return;
+    }
+
+    const itemsQuery = `
+      SELECT 
+        pf.podravka_facings_id,
+        pf.product_id,
+        pf.category,
+        pf.facings_count,
+        pf.is_listed,
+        pf.record_type,
+        p.name AS name
+      FROM podravka_facings pf
+      JOIN podravka_products p ON pf.product_id = p.product_id
+      WHERE pf.batch_id = ?
+        AND pf.record_type = 'PRESENCE'
+      ORDER BY p.name ASC
+    `;
+
+    const [items] = await db
+      .promise()
+      .query<RowDataPacket[]>(itemsQuery, [batchId]);
+
+    res.json({
+      store: storeRows[0],
+      items,
+    });
+  } catch (error) {
+    console.error("Error fetching presence by batch ID:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
