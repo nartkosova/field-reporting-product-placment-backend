@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  employee
+  viewer
+}
+
+enum StoreChannel {
+  TT
+  MT
+}
+
+enum StoreCategory {
+  A
+  B
+  C
+  D
+  E
+  F
+  G
+  W
+  WHC
+}
+
+enum PhotoType {
+  regular_shelf
+  secondary_position
+  new_product
+  sale
+  fletushka
+  korporative
+  staleness
+  reward_game
+  dimensioning_report
+  secondary_position_quarter
+  other1
+  other2
+}
+
+enum Company {
+  podravka
+  competitor
+}
+
+enum ProductCategory {
+  A
+  B
+  C
+  D
+  E
+  F
+  G
+}
+
+enum RecordType {
+  FACINGS
+  PRESENCE
+}
+
+model User {
+  userId              Int                  @id @default(autoincrement()) @map("user_id")
+  user                String               @db.VarChar(100)
+  password            String               @db.VarChar(255)
+  role                UserRole?            @default(employee)
+  createdAt           DateTime?            @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at") @db.Timestamp(0)
+  competitorFacings   CompetitorFacing[]
+  competitorProducts  CompetitorProduct[]
+  podravkaFacings     PodravkaFacing[]
+  reportPhotos        ReportPhoto[]
+  stores              Store[]
+
+  @@map("users")
+}
+
+model Store {
+  storeId             Int                  @id @default(autoincrement()) @map("store_id")
+  storeName           String               @map("store_name") @db.VarChar(255)
+  storeCode           String               @unique(map: "store_code") @map("store_code") @db.VarChar(50)
+  storeChannel        StoreChannel         @map("store_channel")
+  storeCategory       StoreCategory        @map("store_category")
+  userId              Int?                 @map("user_id")
+  salesRep            String               @map("sales_rep") @db.VarChar(100)
+  location            String               @db.VarChar(100)
+  createdAt           DateTime?            @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at") @db.Timestamp(0)
+  user                User?                @relation(fields: [userId], references: [userId], map: "stores_ibfk_1")
+  competitorFacings   CompetitorFacing[]
+  podravkaFacings     PodravkaFacing[]
+  reportPhotos        ReportPhoto[]
+
+  @@index([userId], map: "idx_user_id")
+  @@index([userId, storeCategory], map: "idx_user_category")
+  @@map("stores")
+}
+
+model ReportPhoto {
+  photoId             Int                  @id @default(autoincrement()) @map("photo_id")
+  photoUrl            String               @map("photo_url") @db.VarChar(255)
+  category            String               @db.VarChar(255)
+  photoType           PhotoType            @map("photo_type")
+  company             Company
+  photoDescription    String?              @map("photo_description") @db.VarChar(250)
+  userId              Int                  @map("user_id")
+  storeId             Int                  @map("store_id")
+  createdAt           DateTime             @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at") @db.Timestamp(0)
+  user                User                 @relation(fields: [userId], references: [userId], map: "report_photos_ibfk_1")
+  store               Store                @relation(fields: [storeId], references: [storeId], map: "report_photos_ibfk_2")
+
+  @@index([userId], map: "user_id")
+  @@index([storeId], map: "store_id")
+  @@map("report_photos")
+}
+
+model ProductRanking {
+  id                  Int                  @id @default(autoincrement())
+  productId           Int                  @map("product_id")
+  year                Int
+  totalRank           Int?                 @map("total_rank")
+  categoryRank        Int?                 @map("category_rank")
+  salesLastYear       Float?               @map("sales_last_year")
+  categorySalesShare  Decimal?             @map("category_sales_share") @db.Decimal(6, 4)
+  createdAt           DateTime?            @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at") @db.Timestamp(0)
+  product             PodravkaProduct      @relation(fields: [productId], references: [productId], map: "product_rankings_ibfk_1")
+
+  @@index([productId], map: "product_id")
+  @@map("product_rankings")
+}
+
+model PodravkaProduct {
+  productId           Int                  @id @default(autoincrement()) @map("product_id")
+  businessUnit        String               @map("business_unit") @db.VarChar(100)
+  category            String               @db.VarChar(100)
+  name                String               @db.VarChar(255)
+  podravkaCode        String               @unique(map: "podravka_code") @map("podravka_code") @db.VarChar(50)
+  elkosCode           Int?                 @map("elkos_code")
+  productCategory     ProductCategory      @map("product_category")
+  weight              Float?
+  createdAt           DateTime?            @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at") @db.Timestamp(0)
+  facings             PodravkaFacing[]
+  rankings            ProductRanking[]
+
+  @@map("podravka_products")
+}
+
+model PodravkaFacing {
+  podravkaFacingsId   Int                  @id @default(autoincrement()) @map("podravka_facings_id")
+  userId              Int                  @map("user_id")
+  storeId             Int                  @map("store_id")
+  productId           Int                  @map("product_id")
+  category            String               @db.VarChar(255)
+  facingsCount        Int                  @map("facings_count")
+  batchId             String               @map("batch_id") @db.VarChar(45)
+  createdAt           DateTime             @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at") @db.Timestamp(0)
+  isListed            Boolean?             @default(true) @map("is_listed") @db.TinyInt
+  recordType          RecordType?          @default(FACINGS) @map("record_type")
+  user                User                 @relation(fields: [userId], references: [userId], map: "podravka_facings_ibfk_1")
+  store               Store                @relation(fields: [storeId], references: [storeId], map: "podravka_facings_ibfk_2")
+  product             PodravkaProduct      @relation(fields: [productId], references: [productId], map: "podravka_facings_ibfk_3")
+
+  @@index([userId], map: "user_id")
+  @@index([storeId], map: "store_id")
+  @@index([productId], map: "product_id")
+  @@map("podravka_facings")
+}
+
+model CompetitorProduct {
+  competitorProductId Int                  @id @default(autoincrement()) @map("competitor_product_id")
+  competitorId        Int                  @map("competitor_id")
+  name                String               @db.VarChar(255)
+  category            String               @db.VarChar(100)
+  weight              Float?
+  createdBy           Int?                 @map("created_by")
+  createdAt           DateTime?            @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at") @db.Timestamp(0)
+  competitor          CompetitorBrand      @relation(fields: [competitorId], references: [competitorId], map: "competitor_products_ibfk_1")
+  creator             User?                @relation(fields: [createdBy], references: [userId], map: "competitor_products_ibfk_2")
+
+  @@index([competitorId], map: "competitor_id")
+  @@index([createdBy], map: "created_by")
+  @@map("competitor_products")
+}
+
+model CompetitorFacing {
+  id                  Int                  @id @default(autoincrement())
+  userId              Int                  @map("user_id")
+  storeId             Int                  @map("store_id")
+  competitorId        Int                  @map("competitor_id")
+  category            String               @db.VarChar(45)
+  facingsCount        Int                  @map("facings_count")
+  batchId             String               @map("batch_id") @db.VarChar(45)
+  createdAt           DateTime             @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at") @db.Timestamp(0)
+  user                User                 @relation(fields: [userId], references: [userId], map: "competitor_facings_ibfk_1")
+  store               Store                @relation(fields: [storeId], references: [storeId], map: "competitor_facings_ibfk_2")
+  competitor          CompetitorBrand      @relation(fields: [competitorId], references: [competitorId], map: "competitor_facings_ibfk_3")
+
+  @@index([userId], map: "user_id")
+  @@index([storeId], map: "store_id")
+  @@index([competitorId], map: "competitor_id")
+  @@map("competitor_facings")
+}
+
+model CompetitorBrand {
+  competitorId        Int                        @id @default(autoincrement()) @map("competitor_id")
+  brandName           String                     @unique(map: "brand_name_UNIQUE") @map("brand_name") @db.VarChar(255)
+  createdAt           DateTime?                  @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at") @db.Timestamp(0)
+  categories          CompetitorBrandCategory[]
+  facings             CompetitorFacing[]
+  products            CompetitorProduct[]
+
+  @@map("competitor_brands")
+}
+
+model CompetitorBrandCategory {
+  id                  Int                  @id @default(autoincrement())
+  competitorId        Int                  @map("competitor_id")
+  category            String               @db.VarChar(100)
+  competitor          CompetitorBrand      @relation(fields: [competitorId], references: [competitorId], onDelete: Cascade, map: "competitor_brand_categories_ibfk_1")
+
+  @@index([competitorId], map: "competitor_id")
+  @@map("competitor_brand_categories")
+}
