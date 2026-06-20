@@ -9,11 +9,18 @@ dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
 const ALLOWED_ROLES = new Set(["admin", "employee", "viewer"]);
 
+const isAdminRequest = (req: Request): boolean => req.user?.role === "admin";
+
 export const createUser = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
+    if (!isAdminRequest(req)) {
+      res.status(403).json({ error: "Access denied: insufficient permissions" });
+      return;
+    }
+
     const { user, password, role } = req.body;
     if (!user || !password || !role) {
       res.status(400).json({
@@ -55,6 +62,11 @@ export const updateUser = async (
   res: Response
 ): Promise<void> => {
   try {
+    if (!isAdminRequest(req)) {
+      res.status(403).json({ error: "Access denied: insufficient permissions" });
+      return;
+    }
+
     const { user, password, role } = req.body;
     const targetUserId = req.params.user_id;
 
@@ -105,6 +117,11 @@ export const getUserById = async (
   req: Request,
   res: Response
 ): Promise<void> => {
+  if (!isAdminRequest(req)) {
+    res.status(403).json({ error: "Access denied: insufficient permissions" });
+    return;
+  }
+
   const user_id = req.params.user_id;
   if (!user_id) {
     res.status(400).json({ error: "User ID eshte i nevojshem" });
@@ -143,6 +160,11 @@ export const getEmployees = (req: Request, res: Response): void => {
   });
 };
 export const getAllUsers = (req: Request, res: Response): void => {
+  if (!isAdminRequest(req)) {
+    res.status(403).json({ error: "Access denied: insufficient permissions" });
+    return;
+  }
+
   const query =
     "SELECT user_id, user, role, created_at FROM users ORDER BY user ASC";
 
@@ -219,6 +241,11 @@ export const updateUserPassword = async (
 };
 
 export const deleteUser = (req: Request, res: Response): void => {
+  if (!isAdminRequest(req)) {
+    res.status(403).json({ error: "Access denied: insufficient permissions" });
+    return;
+  }
+
   const targetUserId = Number(req.params.user_id);
   const loggedInUserId = req.user?.user_id;
 

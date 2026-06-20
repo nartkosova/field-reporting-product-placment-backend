@@ -133,6 +133,7 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
         u.user AS user,
         rp.store_id,
         s.store_name,
+        s.store_code,
         rp.created_at
       FROM report_photos rp
       JOIN users u ON rp.user_id = u.user_id
@@ -247,6 +248,7 @@ export const getReportPhotosByUserId = async (
         u.user AS user,
         rp.store_id,
         s.store_name,
+        s.store_code,
         rp.created_at
       FROM report_photos rp
       JOIN users u ON rp.user_id = u.user_id
