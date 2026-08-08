@@ -8,8 +8,22 @@ DB_PASSWORD := app123
 DB_ROOT_PASSWORD := root123
 DB_PORT := 3306
 
+# Docker Hub: https://hub.docker.com/repository/docker/nartkosova/podravka-backend
+IMAGE := nartkosova/podravka-backend
+# Override on the command line: make docker-release TAG=v1.2.0
+TAG ?= latest
+# Immutable tag so every push is traceable back to a commit. "-dirty" is
+# appended when the working tree has uncommitted changes.
+GIT_TAG := $(shell git rev-parse --short HEAD 2>/dev/null || echo nogit)$(shell git diff --quiet 2>/dev/null || echo -dirty)
+# Deployment hosts are amd64; without this an arm64 machine silently pushes an
+# image the server cannot run.
+PLATFORM ?= linux/amd64
+# Host port used by "make docker-run"
+APP_PORT ?= 3000
+
 .PHONY: help db-up db-down db-start db-stop db-restart db-logs db-shell db-status \
-	backend-dev backend-build backend-start prisma-generate prisma-migrate prisma-deploy prisma-studio seed
+	backend-dev backend-build backend-start prisma-generate prisma-migrate prisma-deploy prisma-studio seed \
+	docker-login docker-build docker-push docker-release docker-run docker-tags
 
 help:
 	@echo "Available commands:"
@@ -29,6 +43,14 @@ help:
 	@echo "  make prisma-deploy    Apply Prisma migrations"
 	@echo "  make prisma-studio    Open Prisma Studio"
 	@echo "  make seed             Seed local example data"
+	@echo ""
+	@echo "Docker Hub ($(IMAGE)):"
+	@echo "  make docker-login     Log in to Docker Hub"
+	@echo "  make docker-build     Build the image (tags :$(TAG) and :$(GIT_TAG))"
+	@echo "  make docker-push      Push both tags"
+	@echo "  make docker-release   Build then push  <- the usual one"
+	@echo "  make docker-run       Run the built image locally on port $(APP_PORT)"
+	@echo "  make docker-tags      Show the tags that would be produced"
 
 db-up:
 	@if docker ps -a --format '{{.Names}}' | grep -Fxq "$(DB_CONTAINER)"; then \
@@ -91,3 +113,41 @@ prisma-studio:
 
 seed:
 	npm run seed
+
+# --- Docker Hub -------------------------------------------------------------
+
+docker-tags:
+	@echo "image:    $(IMAGE)"
+	@echo "tags:     $(TAG), $(GIT_TAG)"
+	@echo "platform: $(PLATFORM)"
+
+docker-login:
+	@docker login
+
+docker-build:
+	@echo "Building $(IMAGE):$(TAG) and $(IMAGE):$(GIT_TAG) for $(PLATFORM)..."
+	@docker build \
+		--platform $(PLATFORM) \
+		-f dockerfile \
+		-t $(IMAGE):$(TAG) \
+		-t $(IMAGE):$(GIT_TAG) \
+		.
+
+docker-push:
+	@if ! docker image inspect $(IMAGE):$(TAG) >/dev/null 2>&1; then \
+		echo "Image $(IMAGE):$(TAG) not found locally. Run 'make docker-build' first."; \
+		exit 1; \
+	fi
+	@docker push $(IMAGE):$(TAG)
+	@docker push $(IMAGE):$(GIT_TAG)
+	@echo "Pushed $(IMAGE):$(TAG) and $(IMAGE):$(GIT_TAG)"
+
+docker-release: docker-build docker-push
+
+# Smoke-test the image before pushing. Reads config from .env; the app listens
+# on 3000 inside the container.
+docker-run:
+	@docker run --rm -it \
+		--env-file .env \
+		-p $(APP_PORT):3000 \
+		$(IMAGE):$(TAG)

@@ -1,6 +1,6 @@
 import express from "express";
 import bodyParser from "body-parser";
-import { corsConfig } from "./utils/corsConfig";
+import cors from "cors";
 import logger from "./utils/logger";
 import middleware from "./utils/middleware";
 import { generalLimiter } from "./utils/rateLimiter";
@@ -18,11 +18,12 @@ import llmRoutes from "./routes/llmRoutes";
 import path from "path";
 import geminiRoutes from "./routes/geminiRoutes";
 import workDayRoutes from "./routes/workDayRoutes";
+import analyticsRoutes from "./routes/analyticsRoutes";
 const app = express();
 
 // Security middleware
 app.use(helmetConfig);
-app.use(corsConfig);
+app.use(cors());
 app.use(bodyParser.json({ limit: "1mb" }));
 app.use(logger);
 app.use(generalLimiter);
@@ -99,6 +100,13 @@ app.use(
   middleware.authenticateToken,
   middleware.userExtractor,
   workDayRoutes
+);
+app.use(
+  "/api/analytics",
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  analyticsRoutes
 );
 app.use(middleware.unknownEndpoint);
 app.use(middleware.errorHandler);
