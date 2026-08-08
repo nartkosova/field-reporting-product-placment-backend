@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -65,6 +64,23 @@ enum RecordType {
   PRESENCE
 }
 
+enum WorkLogStatus {
+  planned_work
+  vacation
+  sick_day
+  other
+}
+
+enum WorkActivityType {
+  ppl
+  photo_report
+  presence_report
+  podravka_facings
+  competitor_facings
+  store_visit
+  other
+}
+
 model User {
   userId              Int                  @id @default(autoincrement()) @map("user_id")
   user                String               @db.VarChar(100)
@@ -76,8 +92,69 @@ model User {
   podravkaFacings     PodravkaFacing[]
   reportPhotos        ReportPhoto[]
   stores              Store[]
+  workLogDays         WorkLogDay[]
 
   @@map("users")
+}
+
+model WorkLogDay {
+  workLogDayId        Int                  @id @default(autoincrement()) @map("work_log_day_id")
+  userId              Int                  @map("user_id")
+  workDate            DateTime             @map("work_date") @db.Date
+  status              WorkLogStatus        @default(planned_work)
+  plan                String?              @db.Text
+  summary             String?              @db.Text
+  absenceReason       String?              @map("absence_reason") @db.VarChar(255)
+  startKilometers     Decimal?             @map("start_kilometers") @db.Decimal(10, 2)
+  endKilometers       Decimal?             @map("end_kilometers") @db.Decimal(10, 2)
+  kilometersDriven    Decimal?             @map("kilometers_driven") @db.Decimal(10, 2)
+  fuelCost            Decimal?             @map("fuel_cost") @db.Decimal(10, 2)
+  fuelLiters          Decimal?             @map("fuel_liters") @db.Decimal(10, 2)
+  otherTravelCost     Decimal?             @map("other_travel_cost") @db.Decimal(10, 2)
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamp(0)
+  user                User                 @relation(fields: [userId], references: [userId], map: "work_log_days_ibfk_1")
+  activities          WorkLogActivity[]
+  cities              WorkLogDayCity[]
+  competitorFacings   CompetitorFacing[]
+  podravkaFacings     PodravkaFacing[]
+  reportPhotos        ReportPhoto[]
+
+  @@unique([userId, workDate], map: "uniq_user_work_date")
+  @@index([userId], map: "idx_work_log_days_user_id")
+  @@index([workDate], map: "idx_work_log_days_work_date")
+  @@map("work_log_days")
+}
+
+model WorkLogActivity {
+  workLogActivityId   Int                  @id @default(autoincrement()) @map("work_log_activity_id")
+  workLogDayId        Int                  @map("work_log_day_id")
+  activityType        WorkActivityType     @map("activity_type")
+  planned             Boolean              @default(true)
+  completed           Boolean              @default(false)
+  quantity            Int?
+  note                String?              @db.Text
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamp(0)
+  workLogDay          WorkLogDay           @relation(fields: [workLogDayId], references: [workLogDayId], onDelete: Cascade, map: "work_log_activities_ibfk_1")
+
+  @@index([workLogDayId], map: "idx_work_log_activities_day_id")
+  @@index([activityType], map: "idx_work_log_activities_type")
+  @@map("work_log_activities")
+}
+
+model WorkLogDayCity {
+  workLogDayCityId    Int                  @id @default(autoincrement()) @map("work_log_day_city_id")
+  workLogDayId        Int                  @map("work_log_day_id")
+  cityName            String               @map("city_name") @db.VarChar(100)
+  visitOrder          Int?                 @map("visit_order")
+  note                String?              @db.VarChar(255)
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamp(0)
+  workLogDay          WorkLogDay           @relation(fields: [workLogDayId], references: [workLogDayId], onDelete: Cascade, map: "work_log_day_cities_ibfk_1")
+
+  @@index([workLogDayId], map: "idx_work_log_day_cities_day_id")
+  @@index([cityName], map: "idx_work_log_day_cities_city_name")
+  @@map("work_log_day_cities")
 }
 
 model Store {
@@ -109,12 +186,15 @@ model ReportPhoto {
   photoDescription    String?              @map("photo_description") @db.VarChar(250)
   userId              Int                  @map("user_id")
   storeId             Int                  @map("store_id")
+  workLogDayId        Int?                 @map("work_log_day_id")
   createdAt           DateTime             @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at") @db.Timestamp(0)
   user                User                 @relation(fields: [userId], references: [userId], map: "report_photos_ibfk_1")
   store               Store                @relation(fields: [storeId], references: [storeId], map: "report_photos_ibfk_2")
+  workLogDay          WorkLogDay?          @relation(fields: [workLogDayId], references: [workLogDayId], map: "report_photos_ibfk_3")
 
   @@index([userId], map: "user_id")
   @@index([storeId], map: "store_id")
+  @@index([workLogDayId], map: "idx_report_photos_work_log_day_id")
   @@map("report_photos")
 }
 
@@ -154,6 +234,7 @@ model PodravkaFacing {
   userId              Int                  @map("user_id")
   storeId             Int                  @map("store_id")
   productId           Int                  @map("product_id")
+  workLogDayId        Int?                 @map("work_log_day_id")
   category            String               @db.VarChar(255)
   facingsCount        Int                  @map("facings_count")
   batchId             String               @map("batch_id") @db.VarChar(45)
@@ -163,10 +244,12 @@ model PodravkaFacing {
   user                User                 @relation(fields: [userId], references: [userId], map: "podravka_facings_ibfk_1")
   store               Store                @relation(fields: [storeId], references: [storeId], map: "podravka_facings_ibfk_2")
   product             PodravkaProduct      @relation(fields: [productId], references: [productId], map: "podravka_facings_ibfk_3")
+  workLogDay          WorkLogDay?          @relation(fields: [workLogDayId], references: [workLogDayId], map: "podravka_facings_ibfk_4")
 
   @@index([userId], map: "user_id")
   @@index([storeId], map: "store_id")
   @@index([productId], map: "product_id")
+  @@index([workLogDayId], map: "idx_podravka_facings_work_log_day_id")
   @@map("podravka_facings")
 }
 
@@ -191,6 +274,7 @@ model CompetitorFacing {
   userId              Int                  @map("user_id")
   storeId             Int                  @map("store_id")
   competitorId        Int                  @map("competitor_id")
+  workLogDayId        Int?                 @map("work_log_day_id")
   category            String               @db.VarChar(45)
   facingsCount        Int                  @map("facings_count")
   batchId             String               @map("batch_id") @db.VarChar(45)
@@ -198,10 +282,12 @@ model CompetitorFacing {
   user                User                 @relation(fields: [userId], references: [userId], map: "competitor_facings_ibfk_1")
   store               Store                @relation(fields: [storeId], references: [storeId], map: "competitor_facings_ibfk_2")
   competitor          CompetitorBrand      @relation(fields: [competitorId], references: [competitorId], map: "competitor_facings_ibfk_3")
+  workLogDay          WorkLogDay?          @relation(fields: [workLogDayId], references: [workLogDayId], map: "competitor_facings_ibfk_4")
 
   @@index([userId], map: "user_id")
   @@index([storeId], map: "store_id")
   @@index([competitorId], map: "competitor_id")
+  @@index([workLogDayId], map: "idx_competitor_facings_work_log_day_id")
   @@map("competitor_facings")
 }
 

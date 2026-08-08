@@ -52,15 +52,8 @@ router.post(
   createUser
 );
 router.post("/login", authLimiter, loginUser);
-router.put(
-  "/:user_id",
-  middleware.tokenExtractor,
-  middleware.authenticateToken,
-  middleware.userExtractor,
-  middleware.authorizeRole(["admin"]),
-  middleware.rejectManualUserId,
-  updateUser
-);
+// Must be registered before "/:user_id", otherwise that param route matches
+// "update-password" first and rejects non-admins.
 router.put(
   "/update-password",
   middleware.tokenExtractor,
@@ -69,6 +62,15 @@ router.put(
   middleware.authorizeRole(["admin", "employee"]),
   middleware.rejectManualUserId,
   updateUserPassword
+);
+router.put(
+  "/:user_id",
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  middleware.authorizeRole(["admin"]),
+  middleware.rejectManualUserId,
+  updateUser
 );
 router.delete(
   "/:user_id",

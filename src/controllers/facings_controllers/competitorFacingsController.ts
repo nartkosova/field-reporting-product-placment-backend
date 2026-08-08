@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import db from "../../models/db";
+import { resolveWorkLogDayId } from "../../services/workLogLinkService";
 import { OkPacket, RowDataPacket } from "mysql2";
 import { v4 as uuidv4 } from "uuid";
 
@@ -328,7 +329,8 @@ export const batchCreateCompetitorFacings = async (
   res: Response
 ): Promise<void> => {
   const user_id = req.user?.user_id;
-  const facings = req.body;
+  const body = req.body;
+  const facings = Array.isArray(body) ? body : body?.facings;
 
   if (!user_id) {
     res.status(401).json({ error: "Nuk jeni te autoreziaur." });
@@ -343,6 +345,15 @@ export const batchCreateCompetitorFacings = async (
   const connection = await db.promise().getConnection();
 
   try {
+    const workLogDayId = await resolveWorkLogDayId({
+      userId: user_id,
+      workLogDayId:
+        !Array.isArray(body) && body?.work_log_day_id
+          ? Number(body.work_log_day_id)
+          : null,
+      workDate: !Array.isArray(body) ? body?.work_date : undefined,
+    });
+
     await connection.beginTransaction();
     const batchId = uuidv4();
 
@@ -412,6 +423,7 @@ export const batchCreateCompetitorFacings = async (
       facing.user_id,
       facing.store_id,
       facing.competitor_id,
+      workLogDayId,
       facing.category,
       facing.facings_count,
       facing.batch_id || batchId,
@@ -419,7 +431,7 @@ export const batchCreateCompetitorFacings = async (
 
     const insertFacingsQuery = `
         INSERT INTO competitor_facings 
-        (user_id, store_id, competitor_id, category, facings_count, batch_id)
+        (user_id, store_id, competitor_id, work_log_day_id, category, facings_count, batch_id)
         VALUES ?`;
 
     await connection.query(insertFacingsQuery, [values]);
@@ -429,6 +441,11 @@ export const batchCreateCompetitorFacings = async (
       .status(201)
       .json({ message: "Competitor facings batch created successfully!" });
   } catch (error) {
+    if (error instanceof Error && error.message === "WORK_LOG_DAY_NOT_FOUND") {
+      res.status(404).json({ error: "Work log day not found" });
+      return;
+    }
+
     console.error("Batch competitor facings error:", error);
     await connection.rollback();
     res.status(500).json({ error: "Internal server error" });

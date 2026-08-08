@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import db from "../../models/db";
+import { resolveWorkLogDayId } from "../../services/workLogLinkService";
 import { OkPacket, RowDataPacket } from "mysql2";
 import { v4 as uuidv4 } from "uuid";
 
@@ -464,7 +465,8 @@ export const batchCreatePodravkaFacings = async (
 ): Promise<void> => {
   try {
     const user_id = req.user?.user_id;
-    const facings = req.body;
+    const body = req.body;
+    const facings = Array.isArray(body) ? body : body?.facings;
 
     if (!user_id) {
       res.status(401).json({
@@ -478,6 +480,14 @@ export const batchCreatePodravkaFacings = async (
       return;
     }
     const batchId = uuidv4();
+    const workLogDayId = await resolveWorkLogDayId({
+      userId: user_id,
+      workLogDayId:
+        !Array.isArray(body) && body?.work_log_day_id
+          ? Number(body.work_log_day_id)
+          : null,
+      workDate: !Array.isArray(body) ? body?.work_date : undefined,
+    });
 
     for (const facing of facings) {
       const {
@@ -538,6 +548,7 @@ export const batchCreatePodravkaFacings = async (
       f.user_id,
       f.store_id,
       f.product_id,
+      workLogDayId,
       f.category,
       f.facings_count,
       batchId,
@@ -546,7 +557,7 @@ export const batchCreatePodravkaFacings = async (
     ]);
 
     const query =
-      "INSERT INTO podravka_facings (user_id, store_id, product_id, category, facings_count, batch_id, is_listed, record_type) VALUES ?";
+      "INSERT INTO podravka_facings (user_id, store_id, product_id, work_log_day_id, category, facings_count, batch_id, is_listed, record_type) VALUES ?";
 
     const [result] = await db.promise().query<OkPacket>(query, [values]);
 
@@ -555,6 +566,11 @@ export const batchCreatePodravkaFacings = async (
       message: "Podravka facings batch added successfully!",
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "WORK_LOG_DAY_NOT_FOUND") {
+      res.status(404).json({ error: "Work log day not found" });
+      return;
+    }
+
     console.error("Error batch adding Podravka facings:", error);
     res.status(500).json({ error: "Internal server error" });
   }

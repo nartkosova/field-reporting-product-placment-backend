@@ -1,5 +1,6 @@
 import { Request, RequestHandler, Response } from "express";
 import db from "../models/db";
+import { resolveWorkLogDayId } from "../services/workLogLinkService";
 import { extractPublicId } from "../utils/extractIds";
 import { RowDataPacket } from "mysql2";
 const { cloudinary } = require("../utils/cloudinary");
@@ -10,8 +11,15 @@ export const uploadReportPhoto = async (
 ): Promise<void> => {
   try {
     const tokenUserId = req.user?.user_id;
-    const { photo_type, category, store_id, company, photo_description } =
-      req.body;
+    const {
+      photo_type,
+      category,
+      store_id,
+      company,
+      photo_description,
+      work_log_day_id,
+      work_date,
+    } = req.body;
 
     if (
       !req.file ||
@@ -32,11 +40,16 @@ export const uploadReportPhoto = async (
     }
 
     const photoUrl = file.path;
+    const resolvedWorkLogDayId = await resolveWorkLogDayId({
+      userId: tokenUserId,
+      workLogDayId: work_log_day_id ? Number(work_log_day_id) : null,
+      workDate: work_date,
+    });
 
     const query = `
       INSERT INTO report_photos 
-        (photo_type, photo_url, photo_description, category, company, user_id, store_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+        (photo_type, photo_url, photo_description, category, company, user_id, store_id, work_log_day_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     await db
@@ -49,6 +62,7 @@ export const uploadReportPhoto = async (
         company,
         tokenUserId,
         store_id,
+        resolvedWorkLogDayId,
       ]);
 
     res.status(201).json({
@@ -56,6 +70,11 @@ export const uploadReportPhoto = async (
       url: photoUrl,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "WORK_LOG_DAY_NOT_FOUND") {
+      res.status(404).json({ error: "Work log day not found" });
+      return;
+    }
+
     console.error("Upload error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }

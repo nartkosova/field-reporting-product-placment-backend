@@ -7,7 +7,11 @@ const logger = require("./logger");
 
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET is not set. Refusing to start.");
+}
 
 interface AuthenticatedRequest extends Request {
   token?: string;
@@ -30,13 +34,27 @@ const middleware = {
   ): void => {
     console.error(err);
 
-    if (err instanceof SyntaxError) {
-      res.status(400).json({ error: "Invalid JSON" });
-    } else if (err instanceof Error) {
-      res.status(422).json({ error: err.message });
-    } else {
-      res.status(500).json({ error: "Internal Server Error" });
+    if (res.headersSent) {
+      next(err);
+      return;
     }
+
+    if (err instanceof SyntaxError && "body" in err) {
+      res.status(400).json({ error: "Invalid JSON" });
+      return;
+    }
+
+    // Only errors that explicitly carry a status are safe to surface to the
+    // client; anything else is an unexpected failure and stays a 500.
+    const status = (err as { status?: number; statusCode?: number }).status ??
+      (err as { status?: number; statusCode?: number }).statusCode;
+
+    if (typeof status === "number" && status >= 400 && status < 500) {
+      res.status(status).json({ error: err.message });
+      return;
+    }
+
+    res.status(500).json({ error: "Internal Server Error" });
   },
 
   unknownEndpoint: (req: Request, res: Response) => {
@@ -109,6 +127,7 @@ const middleware = {
       res
         .status(401)
         .json({ error: "Nuk jeni te autoreziaur: No valid user found" });
+      return;
     }
 
     try {
@@ -119,6 +138,7 @@ const middleware = {
 
       if (rows.length === 0) {
         res.status(404).json({ error: "User not found!" });
+        return;
       }
 
       req.user = rows[0];

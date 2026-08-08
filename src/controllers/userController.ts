@@ -6,7 +6,13 @@ import { QueryError, RowDataPacket, OkPacket } from "mysql2";
 import dotenv from "dotenv";
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET is not set. Refusing to start.");
+}
+
+const TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "12h";
 const ALLOWED_ROLES = new Set(["admin", "employee", "viewer"]);
 
 const isAdminRequest = (req: Request): boolean => req.user?.role === "admin";
@@ -177,10 +183,18 @@ export const getAllUsers = (req: Request, res: Response): void => {
 export const loginUser = (req: Request, res: Response): void => {
   const { user, password } = req.body;
 
+  // mysql2 expands objects/arrays into SQL fragments, so only accept strings.
+  if (typeof user !== "string" || typeof password !== "string") {
+    res.status(400).json({ error: "User dhe fjalkalimi jane te nevojshem" });
+    return;
+  }
+
   const query = "SELECT * FROM users WHERE user = ?";
   db.query(query, [user], (err, results: any) => {
-    console.error("Results:", err);
-    if (err) return res.status(500).json({ error: "Database error" });
+    if (err) {
+      console.error("Login query failed:", err);
+      return res.status(500).json({ error: "Database error" });
+    }
     if (results.length === 0)
       return res.status(401).json({ error: "Fjalkalimi esht gabim" });
 
@@ -194,7 +208,8 @@ export const loginUser = (req: Request, res: Response): void => {
 
       const token = jwt.sign(
         { user_id: user.user_id, user: user.user, role: user.role },
-        JWT_SECRET
+        JWT_SECRET,
+        { expiresIn: TOKEN_EXPIRES_IN } as jwt.SignOptions
       );
 
       res.json({

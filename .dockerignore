@@ -1,3 +1,5 @@
 .env
+node_modules
+dist
 podravka_backup.sql
 dump.sql

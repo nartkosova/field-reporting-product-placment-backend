@@ -10,3 +10,5 @@ declare module "express" {
     };
   }
 }
+
+export {};
