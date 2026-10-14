@@ -90,6 +90,21 @@ const VALID_ACTIVITY_TYPES = new Set<WorkActivityType>([
   "store_visit",
 ]);
 
+// MySQL returns DATE columns as JavaScript Date objects. `String(date)` turns
+// them into a verbose, timezone-specific value (for example, "Tue Jun ...").
+const formatDateOnly = (value: unknown): string => {
+  if (value instanceof Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  const stringValue = String(value);
+  const dateMatch = stringValue.match(/^\d{4}-\d{2}-\d{2}/);
+  return dateMatch ? dateMatch[0] : stringValue;
+};
+
 const normalizeNullableText = (value: unknown): string | null => {
   if (typeof value !== "string") {
     return null;
@@ -545,27 +560,15 @@ export const getWorkLogDayById = async (workLogDayId: number, userId: number, is
 
 export const getLatestWorkDayKilometers = async ({
   requestingUserId,
-  isAdmin,
-  targetUserId,
   upToDate,
 }: {
   requestingUserId: number;
-  isAdmin: boolean;
-  targetUserId?: number;
   upToDate?: string;
 }): Promise<LatestWorkDayKilometers | null> => {
-  const params: Array<string | number> = [];
-  const where: string[] = [];
-
-  if (isAdmin) {
-    if (targetUserId) {
-      where.push("wld.user_id = ?");
-      params.push(targetUserId);
-    }
-  } else {
-    where.push("wld.user_id = ?");
-    params.push(requestingUserId);
-  }
+  // Odometer carry-over must always come from the authenticated user's own
+  // history. This must not depend on a client-controlled user_id or the role.
+  const params: Array<string | number> = [requestingUserId];
+  const where: string[] = ["wld.user_id = ?"];
 
   if (upToDate) {
     where.push("wld.work_date <= ?");
@@ -769,24 +772,10 @@ export const getDetailedWorkDayReport = async ({
         wld.kilometers_driven,
         wld.fuel_cost,
         wld.fuel_liters,
-        wld.other_travel_cost,
-        COUNT(DISTINCT rp.photo_id) AS report_photo_count,
-        COUNT(DISTINCT pf.podravka_facings_id) AS podravka_facing_count,
-        COUNT(DISTINCT cf.id) AS competitor_facing_count,
-        COUNT(DISTINCT wlc.work_log_day_city_id) AS city_count,
-        COUNT(DISTINCT wla.work_log_activity_id) AS activity_count
+        wld.other_travel_cost
       FROM work_log_days wld
       JOIN users u ON u.user_id = wld.user_id
-      LEFT JOIN report_photos rp ON rp.work_log_day_id = wld.work_log_day_id
-      LEFT JOIN podravka_facings pf ON pf.work_log_day_id = wld.work_log_day_id
-      LEFT JOIN competitor_facings cf ON cf.work_log_day_id = wld.work_log_day_id
-      LEFT JOIN work_log_day_cities wlc ON wlc.work_log_day_id = wld.work_log_day_id
-      LEFT JOIN work_log_activities wla ON wla.work_log_day_id = wld.work_log_day_id
       ${whereClause}
-      GROUP BY
-        wld.work_log_day_id, wld.user_id, u.user, u.role, wld.work_date, wld.status,
-        wld.plan, wld.summary, wld.absence_reason, wld.start_kilometers, wld.end_kilometers,
-        wld.kilometers_driven, wld.fuel_cost, wld.fuel_liters, wld.other_travel_cost
       ORDER BY wld.work_date DESC, wld.work_log_day_id DESC
       LIMIT ? OFFSET ?
     `,
@@ -801,31 +790,73 @@ export const getDetailedWorkDayReport = async ({
 
   const placeholders = workLogDayIds.map(() => "?").join(",");
 
-  const [activityRows] = await db.promise().query<RowDataPacket[]>(
-    `
-      SELECT work_log_day_id, activity_type, planned, completed, note
-      FROM work_log_activities
-      WHERE work_log_day_id IN (${placeholders})
-      ORDER BY work_log_activity_id ASC
-    `,
-    workLogDayIds
-  );
+  // Aggregate each related table independently for this page only. Joining all
+  // five one-to-many tables together multiplies their row counts and makes the
+  // report slow even when the response is limited to a handful of work days.
+  const [activityResult, cityResult, photoCountResult, podravkaCountResult, competitorCountResult] =
+    await Promise.all([
+      db.promise().query<RowDataPacket[]>(
+        `
+          SELECT work_log_day_id, activity_type, planned, completed, note
+          FROM work_log_activities
+          WHERE work_log_day_id IN (${placeholders})
+          ORDER BY work_log_activity_id ASC
+        `,
+        workLogDayIds
+      ),
+      db.promise().query<RowDataPacket[]>(
+        `
+          SELECT work_log_day_id, city_name, visit_order, note
+          FROM work_log_day_cities
+          WHERE work_log_day_id IN (${placeholders})
+          ORDER BY
+            CASE WHEN visit_order IS NULL THEN 1 ELSE 0 END,
+            visit_order ASC,
+            work_log_day_city_id ASC
+        `,
+        workLogDayIds
+      ),
+      db.promise().query<RowDataPacket[]>(
+        `SELECT work_log_day_id, COUNT(*) AS count
+         FROM report_photos
+         WHERE work_log_day_id IN (${placeholders})
+         GROUP BY work_log_day_id`,
+        workLogDayIds
+      ),
+      db.promise().query<RowDataPacket[]>(
+        `SELECT work_log_day_id, COUNT(*) AS count
+         FROM podravka_facings
+         WHERE work_log_day_id IN (${placeholders})
+         GROUP BY work_log_day_id`,
+        workLogDayIds
+      ),
+      db.promise().query<RowDataPacket[]>(
+        `SELECT work_log_day_id, COUNT(*) AS count
+         FROM competitor_facings
+         WHERE work_log_day_id IN (${placeholders})
+         GROUP BY work_log_day_id`,
+        workLogDayIds
+      ),
+    ]);
 
-  const [cityRows] = await db.promise().query<RowDataPacket[]>(
-    `
-      SELECT work_log_day_id, city_name, visit_order, note
-      FROM work_log_day_cities
-      WHERE work_log_day_id IN (${placeholders})
-      ORDER BY
-        CASE WHEN visit_order IS NULL THEN 1 ELSE 0 END,
-        visit_order ASC,
-        work_log_day_city_id ASC
-    `,
-    workLogDayIds
-  );
+  const [activityRows] = activityResult;
+  const [cityRows] = cityResult;
+  const [photoCountRows] = photoCountResult;
+  const [podravkaCountRows] = podravkaCountResult;
+  const [competitorCountRows] = competitorCountResult;
 
   const activitiesByDay = new Map<number, DetailedWorkDayReportRow["activities"]>();
   const citiesByDay = new Map<number, DetailedWorkDayReportRow["cities"]>();
+  const countByDay = (countRows: RowDataPacket[]) =>
+    new Map(
+      countRows.map((row) => [
+        Number(row.work_log_day_id),
+        Number(row.count || 0),
+      ])
+    );
+  const photoCountsByDay = countByDay(photoCountRows);
+  const podravkaCountsByDay = countByDay(podravkaCountRows);
+  const competitorCountsByDay = countByDay(competitorCountRows);
 
   for (const row of activityRows) {
     const dayId = Number(row.work_log_day_id);
@@ -859,7 +890,7 @@ export const getDetailedWorkDayReport = async ({
         user_id: Number(row.user_id),
         user: String(row.user),
         role: String(row.role),
-        work_date: String(row.work_date),
+        work_date: formatDateOnly(row.work_date),
         status: row.status as WorkLogStatus,
         plan: row.plan ?? null,
         summary: row.summary ?? null,
@@ -871,11 +902,11 @@ export const getDetailedWorkDayReport = async ({
         fuel_liters: row.fuel_liters === null ? null : Number(row.fuel_liters),
         other_travel_cost:
           row.other_travel_cost === null ? null : Number(row.other_travel_cost),
-        report_photo_count: Number(row.report_photo_count || 0),
-        podravka_facing_count: Number(row.podravka_facing_count || 0),
-        competitor_facing_count: Number(row.competitor_facing_count || 0),
-        city_count: Number(row.city_count || 0),
-        activity_count: Number(row.activity_count || 0),
+        report_photo_count: photoCountsByDay.get(dayId) || 0,
+        podravka_facing_count: podravkaCountsByDay.get(dayId) || 0,
+        competitor_facing_count: competitorCountsByDay.get(dayId) || 0,
+        city_count: (citiesByDay.get(dayId) || []).length,
+        activity_count: (activitiesByDay.get(dayId) || []).length,
         cities: citiesByDay.get(dayId) || [],
         activities: activitiesByDay.get(dayId) || [],
       };

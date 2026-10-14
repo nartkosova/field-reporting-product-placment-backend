@@ -13,6 +13,8 @@ import {
 
 const isAdminRequest = (req: Request): boolean => req.user?.role === "admin";
 const getScopedUserId = (req: Request): number | null => req.user?.user_id ?? null;
+const canManageAllWorkDays = (req: Request): boolean =>
+  isAdminRequest(req) && req.user?.user?.trim().toLocaleLowerCase() !== "florina";
 
 export const createWorkDay = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -52,7 +54,9 @@ export const getWorkDays = async (req: Request, res: Response): Promise<void> =>
 
     const rows = await listWorkLogDays({
       requestingUserId,
-      isAdmin: isAdminRequest(req),
+      // Florina uses the employee work-day flow while retaining her admin
+      // access to reports. Her day picker must therefore only see her days.
+      isAdmin: canManageAllWorkDays(req),
       targetUserId: req.query.user_id ? Number(req.query.user_id) : undefined,
       startDate: req.query.start_date as string | undefined,
       endDate: req.query.end_date as string | undefined,
@@ -125,7 +129,7 @@ export const getWorkDayById = async (req: Request, res: Response): Promise<void>
     const workDay = await getWorkLogDayById(
       workLogDayId,
       requestingUserId,
-      isAdminRequest(req)
+      canManageAllWorkDays(req)
     );
 
     if (!workDay) {
@@ -153,8 +157,6 @@ export const getLatestKilometers = async (
 
     const latest = await getLatestWorkDayKilometers({
       requestingUserId,
-      isAdmin: isAdminRequest(req),
-      targetUserId: req.query.user_id ? Number(req.query.user_id) : undefined,
       upToDate: req.query.up_to_date as string | undefined,
     });
 
@@ -190,7 +192,7 @@ export const updateWorkDay = async (req: Request, res: Response): Promise<void> 
       workLogDayId,
       requestingUserId,
       payload,
-      isAdminRequest(req)
+      canManageAllWorkDays(req)
     );
 
     if (!workDay) {
@@ -227,7 +229,7 @@ export const removeWorkDay = async (req: Request, res: Response): Promise<void> 
     const deleted = await deleteWorkLogDay(
       workLogDayId,
       requestingUserId,
-      isAdminRequest(req)
+      canManageAllWorkDays(req)
     );
 
     if (!deleted) {

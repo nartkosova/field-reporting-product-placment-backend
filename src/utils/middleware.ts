@@ -151,7 +151,17 @@ const middleware = {
 
   authorizeRole: (roles: string[]) => {
     return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-      if (!req.user || !roles.includes(req.user.role)) {
+      // Florina remains an admin, but is also explicitly allowed to use the
+      // employee-only field-work actions (for example, photo uploads).
+      const isFlorinaUsingEmployeeAccess =
+        req.user?.role === "admin" &&
+        req.user?.user?.trim().toLocaleLowerCase() === "florina" &&
+        roles.includes("employee");
+
+      if (
+        !req.user ||
+        (!roles.includes(req.user.role) && !isFlorinaUsingEmployeeAccess)
+      ) {
         res
           .status(403)
           .json({ error: "Access denied: insufficient permissions" });
