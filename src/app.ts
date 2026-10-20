@@ -26,7 +26,14 @@ const app = express();
 // and the session cookie is marked Secure.
 app.set("trust proxy", 1);
 app.use(helmetConfig);
-app.use(cors());
+// Production serves the API on the frontend's own origin, so no CORS is
+// needed there. Listed origins (e.g. the Vite dev server) may send the
+// session cookie cross-origin.
+const corsOrigins = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+app.use(corsOrigins.length ? cors({ origin: corsOrigins, credentials: true }) : cors());
 app.use(bodyParser.json({ limit: "1mb" }));
 app.use(logger);
 app.use(generalLimiter);
