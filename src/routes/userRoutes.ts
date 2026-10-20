@@ -6,6 +6,7 @@ import {
   getAllUsers,
   getEmployees,
   loginUser,
+  logoutUser,
   updateUser,
   updateUserPassword,
 } from "../controllers/userController";
@@ -52,6 +53,7 @@ router.post(
   createUser
 );
 router.post("/login", authLimiter, loginUser);
+router.post("/logout", logoutUser);
 // Must be registered before "/:user_id", otherwise that param route matches
 // "update-password" first and rejects non-admins.
 router.put(

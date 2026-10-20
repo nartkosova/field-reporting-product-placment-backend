@@ -7,6 +7,7 @@ import {
   getFacingsWithCompetitors,
   updateCompetitorFacingBatch,
 } from "../../controllers/facings_controllers/competitorFacingsController";
+import { getPplReportHandler } from "../../controllers/pplReportController";
 import middleware from "../../utils/middleware";
 
 const router = express.Router();
@@ -15,6 +16,11 @@ router.post(
   "/competitor-facing/batch",
   middleware.authorizeRole(["admin", "employee"]),
   batchCreateCompetitorFacings
+);
+router.get(
+  "/ppl-report",
+  middleware.authorizeRole(["admin", "employee", "viewer"]),
+  getPplReportHandler
 );
 router.get(
   "/with-competitors",

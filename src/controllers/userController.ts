@@ -4,6 +4,11 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { QueryError, RowDataPacket, OkPacket } from "mysql2";
 import dotenv from "dotenv";
+import {
+  clearSessionCookie,
+  setSessionCookie,
+  validatePassword,
+} from "../utils/auth";
 dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -38,11 +43,12 @@ export const createUser = async (
       res.status(400).json({ error: "Roli i pavlefshëm" });
       return;
     }
-    if (password.length < 8) {
-      res.status(400).json({ error: "Fjalkalimi duhet te jet 8 shkronja" });
+    const passwordError = validatePassword(password, user);
+    if (passwordError) {
+      res.status(400).json({ error: passwordError });
       return;
     }
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     const query = "INSERT INTO users (user, password, role) VALUES (?, ?, ?)";
 
@@ -87,14 +93,13 @@ export const updateUser = async (
       return;
     }
 
-    if (password.length < 8) {
-      res
-        .status(400)
-        .json({ error: "Fjalëkalimi duhet të jetë së paku 8 shkronja" });
+    const passwordError = validatePassword(password, user);
+    if (passwordError) {
+      res.status(400).json({ error: passwordError });
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     const query =
       "UPDATE users SET user = ?, password = ?, role = ? WHERE user_id = ?";
@@ -180,7 +185,13 @@ export const getAllUsers = (req: Request, res: Response): void => {
     return;
   });
 };
-export const loginUser = (req: Request, res: Response): void => {
+const MAX_FAILED_LOGINS = 5;
+const LOCKOUT_MINUTES = 15;
+// Compared against when the user does not exist, so a wrong username takes as
+// long as a wrong password and does not reveal which accounts exist.
+const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", 12);
+
+export const loginUser = async (req: Request, res: Response): Promise<void> => {
   const { user, password } = req.body;
 
   // mysql2 expands objects/arrays into SQL fragments, so only accept strings.
@@ -189,35 +200,76 @@ export const loginUser = (req: Request, res: Response): void => {
     return;
   }
 
-  const query = "SELECT * FROM users WHERE user = ?";
-  db.query(query, [user], (err, results: any) => {
-    if (err) {
-      console.error("Login query failed:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
-    if (results.length === 0)
-      return res.status(401).json({ error: "Fjalkalimi esht gabim" });
-
-    const user = results[0];
-
-    bcrypt.compare(password, user.password, (bcryptErr, isMatch) => {
-      if (bcryptErr)
-        return res.status(500).json({ error: "Error comparing passwords" });
-      if (!isMatch)
-        return res.status(401).json({ error: "Fjalkalimi esht gabim" });
-
-      const token = jwt.sign(
-        { user_id: user.user_id, user: user.user, role: user.role },
-        JWT_SECRET,
-        { expiresIn: TOKEN_EXPIRES_IN } as jwt.SignOptions
+  try {
+    const [rows] = await db
+      .promise()
+      .query<RowDataPacket[]>(
+        `SELECT user_id, user, role, password, failed_login_attempts,
+                locked_until > CURRENT_TIMESTAMP AS is_locked
+         FROM users WHERE user = ? LIMIT 1`,
+        [user]
       );
+    const account = rows[0];
 
-      res.json({
-        token,
-        user: { id: user.user_id, user: user.user, role: user.role },
+    if (account?.is_locked) {
+      res.status(429).json({
+        error: `Llogaria është bllokuar përkohësisht pas shumë tentimeve. Provo pas ${LOCKOUT_MINUTES} minutash.`,
       });
+      return;
+    }
+
+    const isMatch = await bcrypt.compare(password, account?.password || DUMMY_HASH);
+
+    if (!account || !isMatch) {
+      if (account) {
+        // MySQL applies SET left to right: decide the lock from the old
+        // counter, then reset the counter so it restarts after the lock.
+        await db.promise().execute(
+          `UPDATE users
+           SET locked_until = IF(failed_login_attempts + 1 >= ?,
+                                 CURRENT_TIMESTAMP + INTERVAL ? MINUTE, NULL),
+               failed_login_attempts = IF(failed_login_attempts + 1 >= ?,
+                                          0, failed_login_attempts + 1)
+           WHERE user_id = ?`,
+          [MAX_FAILED_LOGINS, LOCKOUT_MINUTES, MAX_FAILED_LOGINS, account.user_id]
+        );
+      }
+      res.status(401).json({ error: "Përdoruesi ose fjalëkalimi është gabim" });
+      return;
+    }
+
+    if (account.failed_login_attempts) {
+      await db
+        .promise()
+        .execute(
+          "UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE user_id = ?",
+          [account.user_id]
+        );
+    }
+
+    const token = jwt.sign(
+      { user_id: account.user_id, user: account.user, role: account.role },
+      JWT_SECRET,
+      { expiresIn: TOKEN_EXPIRES_IN } as jwt.SignOptions
+    );
+    const { exp } = jwt.decode(token) as { exp: number };
+    setSessionCookie(req, res, token, exp * 1000 - Date.now());
+
+    // The token itself only lives in the httpOnly cookie. The client gets
+    // the non-secret profile so it can render the UI and know when to re-login.
+    res.json({
+      user: { user_id: account.user_id, user: account.user, role: account.role },
+      expires_at: new Date(exp * 1000).toISOString(),
     });
-  });
+  } catch (error) {
+    console.error("Login failed:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+export const logoutUser = (req: Request, res: Response): void => {
+  clearSessionCookie(req, res);
+  res.status(204).send();
 };
 
 export const updateUserPassword = async (
@@ -233,12 +285,13 @@ export const updateUserPassword = async (
       return;
     }
 
-    if (newPassword.length < 8) {
-      res.status(400).json({ error: "Fjalkalimi duhet te jet 8 shkronja" });
+    const passwordError = validatePassword(newPassword, req.user?.user);
+    if (passwordError) {
+      res.status(400).json({ error: passwordError });
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
 
     const query = "UPDATE users SET password = ? WHERE user_id = ?";
     db.query<OkPacket>(query, [hashedPassword, user_id], (err, result) => {

@@ -22,6 +22,9 @@ import analyticsRoutes from "./routes/analyticsRoutes";
 const app = express();
 
 // Security middleware
+// Railway terminates TLS in front of the app; trust it so req.secure is true
+// and the session cookie is marked Secure.
+app.set("trust proxy", 1);
 app.use(helmetConfig);
 app.use(cors());
 app.use(bodyParser.json({ limit: "1mb" }));

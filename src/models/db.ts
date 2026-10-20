@@ -12,6 +12,13 @@ const db = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  // Read and write TIMESTAMPs as UTC. Without this, a UTC database session and
+  // a server in local time shift every check-in time by the UTC offset.
+  timezone: "Z",
+});
+
+db.on("connection", (connection) => {
+  connection.query("SET time_zone = '+00:00'");
 });
 
 export default db;

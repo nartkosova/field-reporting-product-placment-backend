@@ -207,6 +207,13 @@ export const updateWorkDay = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    if (error?.message === "WORK_DAY_CHECKED_IN") {
+      res.status(409).json({
+        error: "Dita ka check-in. Data dhe statusi nuk mund të ndryshohen.",
+      });
+      return;
+    }
+
     console.error("Error updating work day:", error);
     res.status(500).json({ error: "Server error" });
   }
@@ -238,7 +245,12 @@ export const removeWorkDay = async (req: Request, res: Response): Promise<void> 
     }
 
     res.status(204).send();
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.message === "WORK_DAY_CHECKED_IN") {
+      res.status(409).json({ error: "Dita ka check-in dhe nuk mund të fshihet." });
+      return;
+    }
+
     console.error("Error deleting work day:", error);
     res.status(500).json({ error: "Server error" });
   }

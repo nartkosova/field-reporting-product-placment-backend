@@ -86,12 +86,16 @@ model User {
   user                String               @db.VarChar(100)
   password            String               @db.VarChar(255)
   role                UserRole?            @default(employee)
+  failedLoginAttempts Int                  @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime?            @map("locked_until") @db.Timestamp(0)
   createdAt           DateTime?            @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at") @db.Timestamp(0)
   competitorFacings   CompetitorFacing[]
   competitorProducts  CompetitorProduct[]
   podravkaFacings     PodravkaFacing[]
   reportPhotos        ReportPhoto[]
   stores              Store[]
+  storeVisits         StoreVisit[]
+  storeVisitPhotos    StoreVisitPhoto[]
   workLogDays         WorkLogDay[]
 
   @@map("users")
@@ -111,9 +115,12 @@ model WorkLogDay {
   fuelCost            Decimal?             @map("fuel_cost") @db.Decimal(10, 2)
   fuelLiters          Decimal?             @map("fuel_liters") @db.Decimal(10, 2)
   otherTravelCost     Decimal?             @map("other_travel_cost") @db.Decimal(10, 2)
+  checkInAt           DateTime?            @map("check_in_at") @db.Timestamp(0)
+  checkOutAt          DateTime?            @map("check_out_at") @db.Timestamp(0)
   createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamp(0)
   updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamp(0)
   user                User                 @relation(fields: [userId], references: [userId], map: "work_log_days_ibfk_1")
+  storeVisits         StoreVisit[]
   activities          WorkLogActivity[]
   cities              WorkLogDayCity[]
   competitorFacings   CompetitorFacing[]
@@ -157,6 +164,40 @@ model WorkLogDayCity {
   @@map("work_log_day_cities")
 }
 
+model StoreVisit {
+  storeVisitId        Int                  @id @default(autoincrement()) @map("store_visit_id")
+  workLogDayId        Int                  @map("work_log_day_id")
+  userId              Int                  @map("user_id")
+  storeId             Int                  @map("store_id")
+  checkInAt           DateTime             @default(now()) @map("check_in_at") @db.Timestamp(0)
+  checkOutAt          DateTime?            @map("check_out_at") @db.Timestamp(0)
+  note                String?              @db.VarChar(255)
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamp(0)
+  workLogDay          WorkLogDay           @relation(fields: [workLogDayId], references: [workLogDayId], onDelete: Cascade, map: "store_visits_ibfk_1")
+  user                User                 @relation(fields: [userId], references: [userId], map: "store_visits_ibfk_2")
+  store               Store                @relation(fields: [storeId], references: [storeId], map: "store_visits_ibfk_3")
+  photos              StoreVisitPhoto[]
+
+  @@index([workLogDayId], map: "idx_store_visits_day_id")
+  @@index([userId], map: "idx_store_visits_user_id")
+  @@index([storeId], map: "idx_store_visits_store_id")
+  @@map("store_visits")
+}
+
+model StoreVisitPhoto {
+  storeVisitPhotoId   Int                  @id @default(autoincrement()) @map("store_visit_photo_id")
+  storeVisitId        Int                  @map("store_visit_id")
+  userId              Int                  @map("user_id")
+  photoUrl            String               @map("photo_url") @db.VarChar(255)
+  publicId            String?              @map("public_id") @db.VarChar(255)
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamp(0)
+  storeVisit          StoreVisit           @relation(fields: [storeVisitId], references: [storeVisitId], onDelete: Cascade, map: "store_visit_photos_ibfk_1")
+  user                User                 @relation(fields: [userId], references: [userId], map: "store_visit_photos_ibfk_2")
+
+  @@index([storeVisitId], map: "idx_store_visit_photos_visit_id")
+  @@map("store_visit_photos")
+}
+
 model Store {
   storeId             Int                  @id @default(autoincrement()) @map("store_id")
   storeName           String               @map("store_name") @db.VarChar(255)
@@ -168,6 +209,7 @@ model Store {
   location            String               @db.VarChar(100)
   createdAt           DateTime?            @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at") @db.Timestamp(0)
   user                User?                @relation(fields: [userId], references: [userId], map: "stores_ibfk_1")
+  storeVisits         StoreVisit[]
   competitorFacings   CompetitorFacing[]
   podravkaFacings     PodravkaFacing[]
   reportPhotos        ReportPhoto[]

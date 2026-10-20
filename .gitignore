@@ -15,6 +15,8 @@ coverage/
 .DS_Store
 
 *.sql
+# Migrations must be committed, or deployed databases never get them.
+!prisma/migrations/**/migration.sql
 dump.sql
 podravka_backup.sql
 

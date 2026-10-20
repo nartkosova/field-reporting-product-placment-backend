@@ -1,3 +1,4 @@
+import { readSessionCookie } from "./auth";
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
@@ -66,6 +67,15 @@ const middleware = {
     res: Response,
     next: NextFunction
   ): void => {
+    // Browsers authenticate with the httpOnly session cookie. A bearer header
+    // is still accepted for scripts and tools.
+    const cookieToken = readSessionCookie(req);
+    if (cookieToken) {
+      req.token = cookieToken;
+      next();
+      return;
+    }
+
     let authHeader = req.headers.authorization || req.headers.Authorization;
 
     if (Array.isArray(authHeader)) {

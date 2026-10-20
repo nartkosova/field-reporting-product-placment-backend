@@ -1,5 +1,6 @@
 import db from "../models/db";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
+import { buildDayVerifications, DayVerification } from "./attendanceService";
 
 export type WorkLogStatus = "planned_work" | "vacation" | "sick_day" | "other";
 export type WorkActivityType =
@@ -75,6 +76,7 @@ export interface DetailedWorkDayReportRow {
     completed: boolean;
     note: string | null;
   }>;
+  verification: DayVerification | null;
 }
 
 const VALID_STATUSES = new Set<WorkLogStatus>([
@@ -287,6 +289,8 @@ const loadWorkLogDay = async (workLogDayId: number, requestingUserId?: number, i
         wld.fuel_cost,
         wld.fuel_liters,
         wld.other_travel_cost,
+        wld.check_in_at,
+        wld.check_out_at,
         wld.created_at,
         wld.updated_at,
         COUNT(DISTINCT rp.photo_id) AS report_photo_count,
@@ -302,7 +306,7 @@ const loadWorkLogDay = async (workLogDayId: number, requestingUserId?: number, i
         wld.work_log_day_id, wld.user_id, u.user, u.role, wld.work_date, wld.status,
         wld.plan, wld.summary, wld.absence_reason, wld.start_kilometers, wld.end_kilometers,
         wld.kilometers_driven, wld.fuel_cost, wld.fuel_liters, wld.other_travel_cost,
-        wld.created_at, wld.updated_at
+        wld.check_in_at, wld.check_out_at, wld.created_at, wld.updated_at
     `,
     params
   );
@@ -350,7 +354,7 @@ const loadWorkLogDay = async (workLogDayId: number, requestingUserId?: number, i
   );
 
   return {
-    ...dayRows[0],
+    ...(dayRows[0] as Record<string, any>),
     activities: activityRows,
     cities: cityRows,
   };
@@ -453,6 +457,16 @@ export const updateWorkLogDay = async (
     return null;
   }
 
+  // Once a day carries a check-in it is audit evidence: moving it to
+  // another date or turning it into an absence would rewrite that history.
+  if (
+    (existing as Record<string, any>).check_in_at &&
+    (formatDateOnly((existing as Record<string, any>).work_date) !== payload.work_date.slice(0, 10) ||
+      (payload.status || "planned_work") !== "planned_work")
+  ) {
+    throw new Error("WORK_DAY_CHECKED_IN");
+  }
+
   const connection = await db.promise().getConnection();
 
   try {
@@ -551,6 +565,10 @@ export const deleteWorkLogDay = async (workLogDayId: number, userId: number, isA
     return false;
   }
 
+  if ((existing as Record<string, any>).check_in_at && !isAdmin) {
+    throw new Error("WORK_DAY_CHECKED_IN");
+  }
+
   await db.promise().execute("DELETE FROM work_log_days WHERE work_log_day_id = ?", [workLogDayId]);
   return true;
 };
@@ -597,7 +615,7 @@ export const getLatestWorkDayKilometers = async ({
   return rows[0]
     ? {
         work_log_day_id: Number(rows[0].work_log_day_id),
-        work_date: String(rows[0].work_date),
+        work_date: formatDateOnly(rows[0].work_date),
         start_kilometers:
           rows[0].start_kilometers === null ? null : Number(rows[0].start_kilometers),
         end_kilometers:
@@ -772,7 +790,8 @@ export const getDetailedWorkDayReport = async ({
         wld.kilometers_driven,
         wld.fuel_cost,
         wld.fuel_liters,
-        wld.other_travel_cost
+        wld.other_travel_cost,
+        wld.check_in_at
       FROM work_log_days wld
       JOIN users u ON u.user_id = wld.user_id
       ${whereClause}
@@ -838,6 +857,8 @@ export const getDetailedWorkDayReport = async ({
         workLogDayIds
       ),
     ]);
+
+  const verifications = await buildDayVerifications(rows as Parameters<typeof buildDayVerifications>[0]);
 
   const [activityRows] = activityResult;
   const [cityRows] = cityResult;
@@ -909,6 +930,7 @@ export const getDetailedWorkDayReport = async ({
         activity_count: (activitiesByDay.get(dayId) || []).length,
         cities: citiesByDay.get(dayId) || [],
         activities: activitiesByDay.get(dayId) || [],
+        verification: verifications.get(dayId) || null,
       };
     }),
   };
