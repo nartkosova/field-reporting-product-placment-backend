@@ -4,6 +4,7 @@ import {
   AttendanceError,
   checkInDay,
   checkOutDay,
+  reopenDay,
   endStoreVisit,
   getAttendanceForDay,
   getDayOverview,
@@ -69,6 +70,17 @@ export const postDayCheckOut = async (req: Request, res: Response): Promise<void
     res.json(await checkOutDay(ids.workLogDayId, ids.userId));
   } catch (error) {
     handleError(res, error, "checking out");
+  }
+};
+
+export const postDayReopen = async (req: Request, res: Response): Promise<void> => {
+  const ids = parseIds(req, res);
+  if (!ids) return;
+
+  try {
+    res.json(await reopenDay(ids.workLogDayId, ids.userId));
+  } catch (error) {
+    handleError(res, error, "reopening day");
   }
 };
 

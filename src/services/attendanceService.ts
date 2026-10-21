@@ -62,6 +62,10 @@ export interface DayVerification {
   worked_minutes: number | null;
   in_store_minutes: number;
   longest_gap_minutes: number | null;
+  // Past day checked in but never checked out: the last recorded activity
+  // (visit, PPL, photo) stands in for the end. Never stored, never a real
+  // check-out; reports label it as an estimate.
+  estimated_check_out_at: string | null;
   visit_count: number;
   photo_visit_count: number;
   activities_outside_visit: number;
@@ -192,6 +196,24 @@ export const checkOutDay = async (workLogDayId: number, userId: number) => {
     `UPDATE work_log_days
      SET check_out_at = CURRENT_TIMESTAMP
      WHERE work_log_day_id = ? AND check_out_at IS NULL`,
+    [workLogDayId]
+  );
+
+  return getAttendanceForDay(workLogDayId, userId, false);
+};
+
+// Undoes an accidental or early check-out on the same day. The original
+// start time is kept; the day simply has no end until the next check-out.
+export const reopenDay = async (workLogDayId: number, userId: number) => {
+  const day = await loadOwnTodayDay(workLogDayId, userId);
+
+  if (!day.check_out_at) {
+    throw new AttendanceError(409, "Dita është ende e hapur.");
+  }
+
+  await db.promise().execute(
+    `UPDATE work_log_days SET check_out_at = NULL
+     WHERE work_log_day_id = ? AND check_out_at IS NOT NULL`,
     [workLogDayId]
   );
 
@@ -485,6 +507,22 @@ export const buildDayVerifications = async (
       checkIn && checkOut ? Math.round((checkOut.getTime() - checkIn.getTime()) / 60000) : null;
 
     const isWorkDay = day.status === "planned_work";
+
+    const isPastDay = formatDateOnly(detail.work_date ?? day.work_date) < todayInAppTimezone();
+    let estimatedCheckOut: Date | null = null;
+    if (isWorkDay && checkIn && !checkOut && isPastDay) {
+      const lastSeen = [
+        checkIn.getTime(),
+        ...rawVisits.map((visit) =>
+          new Date(visit.check_out_at ?? visit.check_in_at).getTime()
+        ),
+        ...activities.map((activity) => new Date(activity.created_at).getTime()),
+        ...[...photosByVisit.entries()]
+          .filter(([visitId]) => rawVisits.some((visit) => Number(visit.store_visit_id) === visitId))
+          .flatMap(([, photos]) => photos.map((photo) => new Date(photo.created_at).getTime())),
+      ];
+      estimatedCheckOut = new Date(Math.max(...lastSeen));
+    }
     const isLegacy =
       isWorkDay &&
       !checkIn &&
@@ -545,6 +583,7 @@ export const buildDayVerifications = async (
       worked_minutes: workedMinutes,
       in_store_minutes: inStoreMinutes,
       longest_gap_minutes: longestGap,
+      estimated_check_out_at: estimatedCheckOut ? estimatedCheckOut.toISOString() : null,
       visit_count: visits.length,
       photo_visit_count: visits.filter((visit) => visit.photos.length > 0).length,
       activities_outside_visit: activitiesOutside,
@@ -661,7 +700,8 @@ export type LiveState =
   | "not_started"
   | "in_store"
   | "on_road"
-  | "done";
+  | "done"
+  | "not_closed";
 
 // Lean, query-only snapshot for the admin home page. It skips the per-visit
 // verification work so it stays cheap enough to refresh every minute.
@@ -715,6 +755,8 @@ export const getDayOverview = async (date: string) => {
       ? "not_started"
       : checkOut
       ? "done"
+      : date < todayInAppTimezone()
+      ? "not_closed"
       : row.current_store
       ? "in_store"
       : "on_road";

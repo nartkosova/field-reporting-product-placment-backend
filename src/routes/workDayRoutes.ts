@@ -14,6 +14,7 @@ import {
   getDayAttendance,
   postDayCheckIn,
   postDayCheckOut,
+  postDayReopen,
   postStoreVisit,
   postStoreVisitCheckOut,
   postStoreVisitPhoto,
@@ -47,6 +48,11 @@ router.post(
   "/:work_log_day_id/check-out",
   middleware.authorizeRole(["admin", "employee"]),
   postDayCheckOut
+);
+router.post(
+  "/:work_log_day_id/reopen",
+  middleware.authorizeRole(["admin", "employee"]),
+  postDayReopen
 );
 router.post(
   "/:work_log_day_id/visits",
