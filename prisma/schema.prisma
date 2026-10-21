@@ -226,6 +226,7 @@ model ReportPhoto {
   photoType           PhotoType            @map("photo_type")
   company             Company
   photoDescription    String?              @map("photo_description") @db.VarChar(250)
+  quarter             String?              @db.VarChar(10)
   userId              Int                  @map("user_id")
   storeId             Int                  @map("store_id")
   workLogDayId        Int?                 @map("work_log_day_id")
@@ -237,6 +238,7 @@ model ReportPhoto {
   @@index([userId], map: "user_id")
   @@index([storeId], map: "store_id")
   @@index([workLogDayId], map: "idx_report_photos_work_log_day_id")
+  @@index([quarter], map: "idx_report_photos_quarter")
   @@map("report_photos")
 }
 

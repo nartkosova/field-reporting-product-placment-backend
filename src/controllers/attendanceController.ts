@@ -1,3 +1,5 @@
+// Adds req.file to Express requests, whichever tsconfig the editor picks up.
+/// <reference types="multer" />
 import { Request, Response } from "express";
 import {
   addStoreVisitPhoto,

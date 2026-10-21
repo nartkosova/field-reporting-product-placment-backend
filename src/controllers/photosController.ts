@@ -1,9 +1,14 @@
+// Adds req.file to Express requests, whichever tsconfig the editor picks up.
+/// <reference types="multer" />
 import { Request, RequestHandler, Response } from "express";
 import db from "../models/db";
 import { resolveWorkLogDayId } from "../services/workLogLinkService";
 import { extractPublicId } from "../utils/extractIds";
 import { RowDataPacket } from "mysql2";
 const { cloudinary } = require("../utils/cloudinary");
+
+const QUARTER_PHOTO_TYPES = new Set(["secondary_position_quarter"]);
+const QUARTER_PATTERN = /^Q[1-4]-\d{4}$/;
 
 export const uploadReportPhoto = async (
   req: Request,
@@ -19,7 +24,23 @@ export const uploadReportPhoto = async (
       photo_description,
       work_log_day_id,
       work_date,
+      quarter,
     } = req.body;
+
+    // Quarterly photos record their reporting quarter next to the category.
+    // Older app versions (and photos queued offline before the update) still
+    // send the quarter in place of the category; accept that form too.
+    const isQuarterPhoto = QUARTER_PHOTO_TYPES.has(photo_type);
+    const isQuarter = (value: unknown): value is string =>
+      typeof value === "string" && QUARTER_PATTERN.test(value);
+    const isLegacyQuarterUpload = isQuarterPhoto && !isQuarter(quarter) && isQuarter(category);
+    const resolvedQuarter = isLegacyQuarterUpload ? category : quarter;
+    const resolvedCategory = isLegacyQuarterUpload ? "" : category;
+
+    if (isQuarterPhoto && !isQuarter(resolvedQuarter)) {
+      res.status(400).json({ error: "Zgjidh kvartalin e fotos." });
+      return;
+    }
 
     if (
       !req.file ||
@@ -48,8 +69,8 @@ export const uploadReportPhoto = async (
 
     const query = `
       INSERT INTO report_photos 
-        (photo_type, photo_url, photo_description, category, company, user_id, store_id, work_log_day_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (photo_type, photo_url, photo_description, category, quarter, company, user_id, store_id, work_log_day_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     await db
@@ -58,7 +79,8 @@ export const uploadReportPhoto = async (
         photo_type,
         photoUrl,
         photo_description || null,
-        category,
+        resolvedCategory,
+        isQuarterPhoto ? resolvedQuarter : null,
         company,
         tokenUserId,
         store_id,
@@ -89,6 +111,7 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
       store_ids,
       categories,
       photo_types,
+      quarters,
       company,
       start_date,
       end_date,
@@ -106,6 +129,7 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
     const storeIds = parseArray(store_ids as string | string[] | undefined);
     const cats = parseArray(categories as string | string[] | undefined);
     const types = parseArray(photo_types as string | string[] | undefined);
+    const quarterList = parseArray(quarters as string | string[] | undefined);
     const companyVal = typeof company === "string" ? company.trim() : "";
     const startDate = start_date as string;
     const endDate = end_date as string;
@@ -125,6 +149,18 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
     if (types.length) {
       where.push(`rp.photo_type IN (${types.map(() => "?").join(",")})`);
       values.push(...types);
+    }
+    if (quarterList.length) {
+      // Older quarterly photos keep the quarter in the category column.
+      const placeholders = quarterList.map(() => "?").join(",");
+      where.push(
+        `(rp.quarter IN (${placeholders}) OR (rp.quarter IS NULL AND rp.photo_type IN (${[
+          ...QUARTER_PHOTO_TYPES,
+        ]
+          .map(() => "?")
+          .join(",")}) AND rp.category IN (${placeholders})))`
+      );
+      values.push(...quarterList, ...QUARTER_PHOTO_TYPES, ...quarterList);
     }
 
     if (companyVal) {
@@ -147,6 +183,7 @@ export const getAllReportPhotos = async (req: Request, res: Response) => {
         rp.photo_url,
         rp.photo_description,
         rp.category,
+        rp.quarter,
         rp.company,
         rp.user_id,
         u.user AS user,
