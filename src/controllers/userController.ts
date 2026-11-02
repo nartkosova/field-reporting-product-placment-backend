@@ -9,6 +9,7 @@ import {
   setSessionCookie,
   validatePassword,
 } from "../utils/auth";
+import { ASSIGNABLE_ROLES } from "../utils/permissions";
 dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -138,7 +139,8 @@ export const getUserById = async (
     res.status(400).json({ error: "User ID eshte i nevojshem" });
     return;
   }
-  const query = "SELECT user, user_id, role FROM users WHERE user_id = ?";
+  const query =
+    "SELECT user, user_id, role, field_access FROM users WHERE user_id = ?";
   db.query<RowDataPacket[]>(
     query,
     [user_id],
@@ -156,19 +158,58 @@ export const getUserById = async (
   );
 };
 
+// Everyone who can hold markets, which includes admins: they can be assigned
+// markets like anyone else and show up in the report filters.
 export const getEmployees = (req: Request, res: Response): void => {
   const query = `
-        SELECT user_id, user, created_at
+        SELECT user_id, user, role, created_at
         FROM users
-        WHERE role = 'employee'
+        WHERE role IN (?)
         ORDER BY user ASC
       `;
 
-  db.query<RowDataPacket[]>(query, (err: QueryError | null, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(results);
+  db.query<RowDataPacket[]>(
+    query,
+    [ASSIGNABLE_ROLES],
+    (err: QueryError | null, results) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(results);
+      return;
+    }
+  );
+};
+
+export const updateUserFieldAccess = (req: Request, res: Response): void => {
+  if (!isAdminRequest(req)) {
+    res.status(403).json({ error: "Access denied: insufficient permissions" });
     return;
-  });
+  }
+
+  const { field_access } = req.body;
+  if (typeof field_access !== "boolean") {
+    res.status(400).json({ error: "field_access duhet të jetë true ose false" });
+    return;
+  }
+
+  // Employees work in the field by default, so the flag only means something
+  // on an admin.
+  const query =
+    "UPDATE users SET field_access = ? WHERE user_id = ? AND role = 'admin'";
+  db.query<OkPacket>(
+    query,
+    [field_access, req.params.user_id],
+    (err: QueryError | null, result) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (result.affectedRows === 0) {
+        res.status(404).json({ error: "Administratori nuk u gjet" });
+        return;
+      }
+      res.json({ message: "Qasja në terren u përditësua me sukses" });
+    }
+  );
 };
 export const getAllUsers = (req: Request, res: Response): void => {
   if (!isAdminRequest(req)) {
@@ -204,7 +245,7 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
     const [rows] = await db
       .promise()
       .query<RowDataPacket[]>(
-        `SELECT user_id, user, role, password, failed_login_attempts,
+        `SELECT user_id, user, role, field_access, password, failed_login_attempts,
                 locked_until > CURRENT_TIMESTAMP AS is_locked
          FROM users WHERE user = ? LIMIT 1`,
         [user]
@@ -258,7 +299,12 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
     // The token itself only lives in the httpOnly cookie. The client gets
     // the non-secret profile so it can render the UI and know when to re-login.
     res.json({
-      user: { user_id: account.user_id, user: account.user, role: account.role },
+      user: {
+        user_id: account.user_id,
+        user: account.user,
+        role: account.role,
+        field_access: Boolean(account.field_access),
+      },
       expires_at: new Date(exp * 1000).toISOString(),
     });
   } catch (error) {

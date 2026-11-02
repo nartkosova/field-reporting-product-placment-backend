@@ -8,6 +8,7 @@ import {
   loginUser,
   logoutUser,
   updateUser,
+  updateUserFieldAccess,
   updateUserPassword,
 } from "../controllers/userController";
 import middleware from "../utils/middleware";
@@ -73,6 +74,14 @@ router.put(
   middleware.authorizeRole(["admin"]),
   middleware.rejectManualUserId,
   updateUser
+);
+router.put(
+  "/:user_id/field-access",
+  middleware.tokenExtractor,
+  middleware.authenticateToken,
+  middleware.userExtractor,
+  middleware.authorizeRole(["admin"]),
+  updateUserFieldAccess
 );
 router.delete(
   "/:user_id",

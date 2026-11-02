@@ -18,6 +18,8 @@ import {
   postStoreVisit,
   postStoreVisitCheckOut,
   postStoreVisitPhoto,
+  putStoreVisitPhoto,
+  removeStoreVisitPhoto,
 } from "../controllers/attendanceController";
 import { uploadLimiter } from "../utils/rateLimiter";
 const { upload } = require("../utils/cloudinary");
@@ -70,6 +72,18 @@ router.post(
   middleware.authorizeRole(["admin", "employee"]),
   upload.single("photo"),
   postStoreVisitPhoto
+);
+router.put(
+  "/:work_log_day_id/visits/:store_visit_id/photos/:photo_id",
+  uploadLimiter,
+  middleware.authorizeRole(["admin", "employee"]),
+  upload.single("photo"),
+  putStoreVisitPhoto
+);
+router.delete(
+  "/:work_log_day_id/visits/:store_visit_id/photos/:photo_id",
+  middleware.authorizeRole(["admin", "employee"]),
+  removeStoreVisitPhoto
 );
 router.get(
   "/latest-kilometers",

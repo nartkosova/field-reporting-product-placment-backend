@@ -1,5 +1,7 @@
 import db from "../models/db";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
+import { WorkEntryInput, WorkEntryType } from "../utils/workEntry";
+const { cloudinary } = require("../utils/cloudinary");
 
 // Field reps are expected on the road between these local times. All checks
 // run in the app's timezone because the server itself usually runs in UTC.
@@ -38,9 +40,12 @@ export type VerificationFlag =
 export interface StoreVisitRow {
   store_visit_id: number;
   work_log_day_id: number;
-  store_id: number;
-  store_name: string;
-  store_code: string;
+  entry_type: WorkEntryType;
+  // Null on "Punë tjetër" and "Punë private" entries, which have no market.
+  store_id: number | null;
+  store_name: string | null;
+  store_code: string | null;
+  reason: string | null;
   check_in_at: string;
   check_out_at: string | null;
   duration_minutes: number | null;
@@ -49,6 +54,10 @@ export interface StoreVisitRow {
 }
 
 export interface GalleryPhoto {
+  // Set on presence photos, which can be replaced or deleted.
+  store_visit_photo_id?: number;
+  store_visit_id?: number;
+  work_log_day_id?: number;
   photo_url: string;
   kind: "presence" | "report";
   label: string;
@@ -61,6 +70,8 @@ export interface DayVerification {
   check_out_at: string | null;
   worked_minutes: number | null;
   in_store_minutes: number;
+  other_work_minutes: number;
+  private_work_minutes: number;
   longest_gap_minutes: number | null;
   // Past day checked in but never checked out: the last recorded activity
   // (visit, PPL, photo) stands in for the end. Never stored, never a real
@@ -223,35 +234,37 @@ export const reopenDay = async (workLogDayId: number, userId: number) => {
 export const startStoreVisit = async (
   workLogDayId: number,
   userId: number,
-  storeId: number
+  entry: WorkEntryInput
 ) => {
   const day = await loadOwnTodayDay(workLogDayId, userId);
 
   if (!day.check_in_at) {
-    throw new AttendanceError(400, "Fillo ditën (check-in) para se të hysh në market.");
+    throw new AttendanceError(400, "Fillo ditën (check-in) para se të regjistrosh punën.");
   }
 
   if (day.check_out_at) {
-    throw new AttendanceError(400, "Dita është mbyllur. Nuk mund të hysh në market.");
+    throw new AttendanceError(400, "Dita është mbyllur. Nuk mund të regjistrosh punë të re.");
   }
 
   const openVisit = await loadOpenVisit(workLogDayId);
   if (openVisit) {
-    throw new AttendanceError(409, "Je ende në një market tjetër. Dil prej tij fillimisht.");
+    throw new AttendanceError(409, "Je ende në një punë tjetër. Përfundoje fillimisht.");
   }
 
-  const [storeRows] = await db.promise().query<RowDataPacket[]>(
-    `SELECT store_id FROM stores WHERE store_id = ? LIMIT 1`,
-    [storeId]
-  );
-  if (!storeRows[0]) {
-    throw new AttendanceError(404, "Marketi nuk u gjet.");
+  if (entry.store_id !== null) {
+    const [storeRows] = await db.promise().query<RowDataPacket[]>(
+      `SELECT store_id FROM stores WHERE store_id = ? LIMIT 1`,
+      [entry.store_id]
+    );
+    if (!storeRows[0]) {
+      throw new AttendanceError(404, "Marketi nuk u gjet.");
+    }
   }
 
   const [result] = await db.promise().execute<ResultSetHeader>(
-    `INSERT INTO store_visits (work_log_day_id, user_id, store_id, check_in_at)
-     VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
-    [workLogDayId, userId, storeId]
+    `INSERT INTO store_visits (work_log_day_id, user_id, entry_type, store_id, reason, check_in_at)
+     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+    [workLogDayId, userId, entry.entry_type, entry.store_id, entry.reason]
   );
 
   return { store_visit_id: result.insertId };
@@ -269,7 +282,7 @@ export const addStoreVisitPhoto = async (
   await loadOwnTodayDay(workLogDayId, userId);
 
   const [rows] = await db.promise().query<RowDataPacket[]>(
-    `SELECT store_visit_id, check_out_at FROM store_visits
+    `SELECT store_visit_id, entry_type, check_out_at FROM store_visits
      WHERE store_visit_id = ? AND work_log_day_id = ? AND user_id = ?
      LIMIT 1`,
     [storeVisitId, workLogDayId, userId]
@@ -277,6 +290,10 @@ export const addStoreVisitPhoto = async (
 
   if (!rows[0]) {
     throw new AttendanceError(404, "Vizita nuk u gjet.");
+  }
+
+  if (rows[0].entry_type !== "market") {
+    throw new AttendanceError(400, "Fotot lejohen vetëm për vizita në market.");
   }
 
   if (rows[0].check_out_at) {
@@ -288,6 +305,89 @@ export const addStoreVisitPhoto = async (
      VALUES (?, ?, ?, ?)`,
     [storeVisitId, userId, photoUrl, publicId]
   );
+};
+
+const destroyCloudinaryPhoto = async (publicId: string | null) => {
+  if (!publicId) return;
+
+  try {
+    await cloudinary.uploader.destroy(publicId, { invalidate: true });
+  } catch (error) {
+    // The database is already right; a leftover remote file is harmless.
+    console.error("Failed to delete presence photo from Cloudinary:", error);
+  }
+};
+
+// Presence photos prove where someone was, so the owner can only correct them
+// while the visit is open. After that only an admin can.
+const loadEditablePhoto = async (
+  workLogDayId: number,
+  storeVisitId: number,
+  photoId: number,
+  userId: number,
+  isAdmin: boolean
+) => {
+  const [rows] = await db.promise().query<RowDataPacket[]>(
+    `SELECT svp.store_visit_photo_id, svp.public_id, sv.user_id, sv.check_out_at
+     FROM store_visit_photos svp
+     JOIN store_visits sv ON sv.store_visit_id = svp.store_visit_id
+     WHERE svp.store_visit_photo_id = ? AND svp.store_visit_id = ?
+       AND sv.work_log_day_id = ?
+     LIMIT 1`,
+    [photoId, storeVisitId, workLogDayId]
+  );
+  const photo = rows[0];
+
+  if (!photo || (!isAdmin && Number(photo.user_id) !== userId)) {
+    throw new AttendanceError(404, "Fotoja nuk u gjet.");
+  }
+
+  if (!isAdmin && photo.check_out_at) {
+    throw new AttendanceError(409, "Fotot mund të ndryshohen vetëm gjatë vizitës.");
+  }
+
+  return photo;
+};
+
+export const replaceStoreVisitPhoto = async (
+  workLogDayId: number,
+  storeVisitId: number,
+  photoId: number,
+  userId: number,
+  isAdmin: boolean,
+  photoUrl: string,
+  publicId: string | null
+) => {
+  let photo;
+  try {
+    photo = await loadEditablePhoto(workLogDayId, storeVisitId, photoId, userId, isAdmin);
+  } catch (error) {
+    // The upload runs before this check, so a refused file must not stay.
+    await destroyCloudinaryPhoto(publicId);
+    throw error;
+  }
+
+  await db.promise().execute(
+    `UPDATE store_visit_photos SET photo_url = ?, public_id = ?
+     WHERE store_visit_photo_id = ?`,
+    [photoUrl, publicId, photoId]
+  );
+  await destroyCloudinaryPhoto(photo.public_id);
+};
+
+export const deleteStoreVisitPhoto = async (
+  workLogDayId: number,
+  storeVisitId: number,
+  photoId: number,
+  userId: number,
+  isAdmin: boolean
+) => {
+  const photo = await loadEditablePhoto(workLogDayId, storeVisitId, photoId, userId, isAdmin);
+
+  await db
+    .promise()
+    .execute("DELETE FROM store_visit_photos WHERE store_visit_photo_id = ?", [photoId]);
+  await destroyCloudinaryPhoto(photo.public_id);
 };
 
 export const endStoreVisit = async (
@@ -349,10 +449,10 @@ export const buildDayVerifications = async (
       dayIds
     ),
     db.promise().query<RowDataPacket[]>(
-      `SELECT sv.store_visit_id, sv.work_log_day_id, sv.store_id, sv.check_in_at,
-              sv.check_out_at, s.store_name, s.store_code
+      `SELECT sv.store_visit_id, sv.work_log_day_id, sv.entry_type, sv.store_id, sv.reason,
+              sv.check_in_at, sv.check_out_at, s.store_name, s.store_code
        FROM store_visits sv
-       JOIN stores s ON s.store_id = sv.store_id
+       LEFT JOIN stores s ON s.store_id = sv.store_id
        WHERE sv.work_log_day_id IN (${placeholders})
        ORDER BY sv.check_in_at ASC, sv.store_visit_id ASC`,
       dayIds
@@ -472,9 +572,11 @@ export const buildDayVerifications = async (
       return {
         store_visit_id: Number(visit.store_visit_id),
         work_log_day_id: dayId,
-        store_id: Number(visit.store_id),
-        store_name: String(visit.store_name),
-        store_code: String(visit.store_code),
+        entry_type: visit.entry_type as WorkEntryType,
+        store_id: toNumberOrNull(visit.store_id),
+        store_name: visit.store_name ?? null,
+        store_code: visit.store_code ?? null,
+        reason: visit.reason ?? null,
         check_in_at: start.toISOString(),
         check_out_at: end ? end.toISOString() : null,
         duration_minutes: end ? Math.round((end.getTime() - start.getTime()) / 60000) : null,
@@ -483,12 +585,18 @@ export const buildDayVerifications = async (
       };
     });
 
-    const inStoreMinutes = visits.reduce((sum, visit) => {
-      if (visit.duration_minutes !== null) return sum + visit.duration_minutes;
-      return sum;
-    }, 0);
+    const marketVisits = visits.filter((visit) => visit.entry_type === "market");
 
-    // Longest stretch between check-in, visits and check-out with no store.
+    const minutesOf = (type: WorkEntryType) =>
+      visits.reduce((sum, visit) => {
+        if (visit.entry_type === type && visit.duration_minutes !== null) {
+          return sum + visit.duration_minutes;
+        }
+        return sum;
+      }, 0);
+
+    // Longest stretch between check-in, entries and check-out with nothing
+    // logged. Entries without a market count as logged time.
     let longestGap: number | null = null;
     if (checkIn) {
       let cursor = checkIn.getTime();
@@ -530,8 +638,11 @@ export const buildDayVerifications = async (
       formatDateOnly(detail.work_date ?? day.work_date) < ATTENDANCE_START_DATE;
 
     const gallery: GalleryPhoto[] = [
-      ...visits.flatMap((visit) =>
+      ...marketVisits.flatMap((visit) =>
         visit.photos.map((photo) => ({
+          store_visit_photo_id: photo.store_visit_photo_id,
+          store_visit_id: visit.store_visit_id,
+          work_log_day_id: dayId,
           photo_url: photo.photo_url,
           kind: "presence" as const,
           label: "Foto prezence",
@@ -558,14 +669,14 @@ export const buildDayVerifications = async (
       if (!visits.length) flags.add("no_visits");
       if (visits.some((visit) => !visit.check_out_at)) flags.add("open_visit");
       if (
-        visits.some(
+        marketVisits.some(
           (visit) => visit.duration_minutes !== null && visit.duration_minutes < MIN_VISIT_MINUTES
         )
       ) {
         flags.add("short_visit");
       }
       if (activitiesOutside > 0) flags.add("activity_outside_visit");
-      if (visits.some((visit) => visit.check_out_at && !visit.photos.length)) {
+      if (marketVisits.some((visit) => visit.check_out_at && !visit.photos.length)) {
         flags.add("no_arrival_photo");
       }
       if (longestGap !== null && longestGap > LONG_GAP_MINUTES) flags.add("long_gap");
@@ -581,11 +692,13 @@ export const buildDayVerifications = async (
       check_in_at: toIsoOrNull(detail.check_in_at),
       check_out_at: toIsoOrNull(detail.check_out_at),
       worked_minutes: workedMinutes,
-      in_store_minutes: inStoreMinutes,
+      in_store_minutes: minutesOf("market"),
+      other_work_minutes: minutesOf("other_work"),
+      private_work_minutes: minutesOf("private_work"),
       longest_gap_minutes: longestGap,
       estimated_check_out_at: estimatedCheckOut ? estimatedCheckOut.toISOString() : null,
-      visit_count: visits.length,
-      photo_visit_count: visits.filter((visit) => visit.photos.length > 0).length,
+      visit_count: marketVisits.length,
+      photo_visit_count: marketVisits.filter((visit) => visit.photos.length > 0).length,
       activities_outside_visit: activitiesOutside,
       visits,
       flags: [...flags],
@@ -699,6 +812,8 @@ export type LiveState =
   | "absence"
   | "not_started"
   | "in_store"
+  | "other_work"
+  | "private_work"
   | "on_road"
   | "done"
   | "not_closed";
@@ -715,7 +830,14 @@ export const getDayOverview = async (date: string) => {
        wld.check_in_at,
        wld.check_out_at,
        (SELECT COUNT(*) FROM store_visits sv
-          WHERE sv.work_log_day_id = wld.work_log_day_id) AS visit_count,
+          WHERE sv.work_log_day_id = wld.work_log_day_id
+            AND sv.entry_type = 'market') AS visit_count,
+       (SELECT sv.entry_type FROM store_visits sv
+          WHERE sv.work_log_day_id = wld.work_log_day_id AND sv.check_out_at IS NULL
+          ORDER BY sv.check_in_at DESC LIMIT 1) AS current_entry_type,
+       (SELECT sv.reason FROM store_visits sv
+          WHERE sv.work_log_day_id = wld.work_log_day_id AND sv.check_out_at IS NULL
+          ORDER BY sv.check_in_at DESC LIMIT 1) AS current_reason,
        (SELECT s.store_name FROM store_visits sv
           JOIN stores s ON s.store_id = sv.store_id
           WHERE sv.work_log_day_id = wld.work_log_day_id AND sv.check_out_at IS NULL
@@ -757,8 +879,10 @@ export const getDayOverview = async (date: string) => {
       ? "done"
       : date < todayInAppTimezone()
       ? "not_closed"
-      : row.current_store
+      : row.current_entry_type === "market"
       ? "in_store"
+      : row.current_entry_type
+      ? (row.current_entry_type as LiveState)
       : "on_road";
 
     return {
@@ -769,6 +893,7 @@ export const getDayOverview = async (date: string) => {
       check_out_at: checkOut ? checkOut.toISOString() : null,
       late: checkIn ? minutesInAppTimezone(checkIn) > lateAfter : false,
       current_store: row.current_store ?? null,
+      current_reason: row.current_reason ?? null,
       visit_count: Number(row.visit_count || 0),
       photo_count: Number(row.photo_count || 0),
       ppl_count: Number(row.ppl_count || 0),

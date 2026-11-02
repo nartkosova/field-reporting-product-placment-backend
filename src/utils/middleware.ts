@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import db from "../models/db";
 import { RowDataPacket } from "mysql2";
+import { hasRoleAccess } from "./permissions";
 const logger = require("./logger");
 
 dotenv.config();
@@ -141,7 +142,8 @@ const middleware = {
     }
 
     try {
-      const query = "SELECT user_id, user, role FROM users WHERE user_id = ?";
+      const query =
+        "SELECT user_id, user, role, field_access FROM users WHERE user_id = ?";
       const [rows] = await db
         .promise()
         .query<RowDataPacket[]>(query, [req.user.user_id]);
@@ -161,17 +163,7 @@ const middleware = {
 
   authorizeRole: (roles: string[]) => {
     return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-      // Florina remains an admin, but is also explicitly allowed to use the
-      // employee-only field-work actions (for example, photo uploads).
-      const isFlorinaUsingEmployeeAccess =
-        req.user?.role === "admin" &&
-        req.user?.user?.trim().toLocaleLowerCase() === "florina" &&
-        roles.includes("employee");
-
-      if (
-        !req.user ||
-        (!roles.includes(req.user.role) && !isFlorinaUsingEmployeeAccess)
-      ) {
+      if (!req.user || !hasRoleAccess(req.user, roles)) {
         res
           .status(403)
           .json({ error: "Access denied: insufficient permissions" });

@@ -3,6 +3,7 @@ SHELL := /bin/bash
 DB_CONTAINER := field-report-mysql
 DB_IMAGE := mysql:8.0
 DB_NAME := field_report
+DB_TEST_NAME := field_report_test
 DB_USER := app
 DB_PASSWORD := app123
 DB_ROOT_PASSWORD := root123
@@ -22,7 +23,7 @@ PLATFORM ?= linux/amd64
 APP_PORT ?= 3000
 
 .PHONY: help db-up db-down db-start db-stop db-restart db-logs db-shell db-status \
-	backend-dev backend-build backend-start prisma-generate prisma-migrate prisma-deploy prisma-studio seed \
+	backend-dev backend-build backend-start test test-db prisma-generate prisma-migrate prisma-deploy prisma-studio seed \
 	docker-login docker-build docker-push docker-release docker-run docker-tags
 
 help:
@@ -38,6 +39,8 @@ help:
 	@echo "  make backend-dev      Run backend in dev mode"
 	@echo "  make backend-build    Build backend"
 	@echo "  make backend-start    Run built backend"
+	@echo "  make test             Run the unit tests"
+	@echo "  make test-db          Run the API tests against a throwaway database"
 	@echo "  make prisma-generate  Generate Prisma client"
 	@echo "  make prisma-migrate   Create and apply a Prisma migration"
 	@echo "  make prisma-deploy    Apply Prisma migrations"
@@ -97,6 +100,18 @@ backend-build:
 
 backend-start:
 	npm run start
+
+test:
+	npm test
+
+# Recreates $(DB_TEST_NAME) and never touches $(DB_NAME). Built from the schema
+# because the migration history cannot run on an empty database:
+# 20260621104551_add_cities references a table a later migration creates.
+test-db:
+	@docker exec $(DB_CONTAINER) mysql -uroot -p$(DB_ROOT_PASSWORD) -e \
+		"DROP DATABASE IF EXISTS $(DB_TEST_NAME); CREATE DATABASE $(DB_TEST_NAME); GRANT ALL ON $(DB_TEST_NAME).* TO '$(DB_USER)'@'%';" 2>/dev/null
+	DATABASE_URL="mysql://$(DB_USER):$(DB_PASSWORD)@localhost:$(DB_PORT)/$(DB_TEST_NAME)" npx prisma db push
+	DB_NAME=$(DB_TEST_NAME) npm run test:db
 
 prisma-generate:
 	npx prisma generate

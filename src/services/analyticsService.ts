@@ -1,5 +1,6 @@
 import db from "../models/db";
 import { RowDataPacket } from "mysql2";
+import { storeVisibleToUsers } from "./storeAssignmentService";
 
 export type Granularity = "day" | "week" | "month" | "quarter";
 
@@ -501,12 +502,14 @@ export const getStoreCoverage = async (filters: AnalyticsFilters) => {
   const params: Array<string | number> = [];
   const storeWhere: string[] = [];
 
-  if (!filters.isAdmin) {
-    storeWhere.push("s.user_id = ?");
-    params.push(filters.requestingUserId);
-  } else if (filters.userIds?.length) {
-    storeWhere.push(`s.user_id IN (${filters.userIds.map(() => "?").join(",")})`);
-    params.push(...filters.userIds);
+  const visibleToUserIds = !filters.isAdmin
+    ? [filters.requestingUserId]
+    : filters.userIds;
+
+  if (visibleToUserIds?.length) {
+    const visible = storeVisibleToUsers("s.store_id", visibleToUserIds);
+    storeWhere.push(visible.sql);
+    params.push(...visible.params);
   }
 
   if (filters.storeIds?.length) {
@@ -538,7 +541,6 @@ export const getStoreCoverage = async (filters: AnalyticsFilters) => {
         s.store_name,
         s.store_code,
         s.store_category,
-        s.user_id,
         COUNT(DISTINCT rp.photo_id) AS photo_count,
         COUNT(DISTINCT pf.podravka_facings_id) AS facing_count,
         GREATEST(
@@ -549,7 +551,7 @@ export const getStoreCoverage = async (filters: AnalyticsFilters) => {
       LEFT JOIN report_photos rp ON rp.store_id = s.store_id ${photoDates}
       LEFT JOIN podravka_facings pf ON pf.store_id = s.store_id ${podravkaDates}
       ${storeWhere.length ? `WHERE ${storeWhere.join(" AND ")}` : ""}
-      GROUP BY s.store_id, s.store_name, s.store_code, s.store_category, s.user_id
+      GROUP BY s.store_id, s.store_name, s.store_code, s.store_category
       ORDER BY photo_count ASC, facing_count ASC, s.store_name ASC
     `,
     // JOIN conditions are bound before the WHERE clause, so the date params

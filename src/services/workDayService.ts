@@ -357,9 +357,10 @@ const loadWorkLogDay = async (workLogDayId: number, requestingUserId?: number, i
   // done with the real stores and times instead of a hand-written note.
   const [storeVisitRows] = await db.promise().query<RowDataPacket[]>(
     `
-      SELECT sv.store_visit_id, sv.store_id, s.store_name, sv.check_in_at, sv.check_out_at
+      SELECT sv.store_visit_id, sv.entry_type, sv.store_id, sv.reason, s.store_name,
+             sv.check_in_at, sv.check_out_at
       FROM store_visits sv
-      JOIN stores s ON s.store_id = sv.store_id
+      LEFT JOIN stores s ON s.store_id = sv.store_id
       WHERE sv.work_log_day_id = ?
       ORDER BY sv.check_in_at ASC
     `,
@@ -372,8 +373,10 @@ const loadWorkLogDay = async (workLogDayId: number, requestingUserId?: number, i
     cities: cityRows,
     store_visits: storeVisitRows.map((row) => ({
       store_visit_id: Number(row.store_visit_id),
-      store_id: Number(row.store_id),
-      store_name: String(row.store_name),
+      entry_type: row.entry_type,
+      store_id: row.store_id === null ? null : Number(row.store_id),
+      store_name: row.store_name ?? null,
+      reason: row.reason ?? null,
       check_in_at: new Date(row.check_in_at).toISOString(),
       check_out_at: row.check_out_at ? new Date(row.check_out_at).toISOString() : null,
     })),

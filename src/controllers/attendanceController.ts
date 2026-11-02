@@ -6,6 +6,8 @@ import {
   AttendanceError,
   checkInDay,
   checkOutDay,
+  deleteStoreVisitPhoto,
+  replaceStoreVisitPhoto,
   reopenDay,
   endStoreVisit,
   getAttendanceForDay,
@@ -13,6 +15,7 @@ import {
   startStoreVisit,
   todayInAppTimezone,
 } from "../services/attendanceService";
+import { parseWorkEntry } from "../utils/workEntry";
 
 const isAdminRequest = (req: Request): boolean => req.user?.role === "admin";
 
@@ -90,14 +93,14 @@ export const postStoreVisit = async (req: Request, res: Response): Promise<void>
   const ids = parseIds(req, res);
   if (!ids) return;
 
-  const storeId = Number(req.body?.store_id);
-  if (!Number.isInteger(storeId)) {
-    res.status(400).json({ error: "store_id is required" });
+  const entry = parseWorkEntry(req.body ?? {});
+  if ("error" in entry) {
+    res.status(400).json({ error: entry.error });
     return;
   }
 
   try {
-    const visit = await startStoreVisit(ids.workLogDayId, ids.userId, storeId);
+    const visit = await startStoreVisit(ids.workLogDayId, ids.userId, entry.value);
     const attendance = await getAttendanceForDay(ids.workLogDayId, ids.userId, false);
     res.status(201).json({ ...attendance, last_action: visit });
   } catch (error) {
@@ -146,6 +149,67 @@ export const postStoreVisitPhoto = async (req: Request, res: Response): Promise<
     res.status(201).json(await getAttendanceForDay(ids.workLogDayId, ids.userId, false));
   } catch (error) {
     handleError(res, error, "uploading store visit photo");
+  }
+};
+
+const parsePhotoIds = (req: Request, res: Response) => {
+  const storeVisitId = Number(req.params.store_visit_id);
+  const photoId = Number(req.params.photo_id);
+  if (!Number.isInteger(storeVisitId) || !Number.isInteger(photoId)) {
+    res.status(400).json({ error: "Invalid photo id" });
+    return null;
+  }
+
+  return { storeVisitId, photoId };
+};
+
+export const putStoreVisitPhoto = async (req: Request, res: Response): Promise<void> => {
+  const ids = parseIds(req, res);
+  const photoIds = ids && parsePhotoIds(req, res);
+  if (!ids || !photoIds) return;
+
+  const file = req.file as Express.Multer.File | undefined;
+  if (!file?.path) {
+    res.status(400).json({ error: "Fotoja mungon." });
+    return;
+  }
+
+  const isAdmin = isAdminRequest(req);
+
+  try {
+    await replaceStoreVisitPhoto(
+      ids.workLogDayId,
+      photoIds.storeVisitId,
+      photoIds.photoId,
+      ids.userId,
+      isAdmin,
+      file.path,
+      file.filename || null
+    );
+    res.json(await getAttendanceForDay(ids.workLogDayId, ids.userId, isAdmin));
+  } catch (error) {
+    handleError(res, error, "replacing store visit photo");
+  }
+};
+
+export const removeStoreVisitPhoto = async (req: Request, res: Response): Promise<void> => {
+  const ids = parseIds(req, res);
+  const photoIds = ids && parsePhotoIds(req, res);
+  if (!ids || !photoIds) return;
+
+  const isAdmin = isAdminRequest(req);
+
+  try {
+    await deleteStoreVisitPhoto(
+      ids.workLogDayId,
+      photoIds.storeVisitId,
+      photoIds.photoId,
+      ids.userId,
+      isAdmin
+    );
+    res.json(await getAttendanceForDay(ids.workLogDayId, ids.userId, isAdmin));
+  } catch (error) {
+    handleError(res, error, "deleting store visit photo");
   }
 };
 

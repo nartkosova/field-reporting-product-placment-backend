@@ -7,6 +7,7 @@ declare module "express" {
       user_id: number;
       user: string;
       role: string;
+      field_access?: boolean | number;
     };
   }
 }

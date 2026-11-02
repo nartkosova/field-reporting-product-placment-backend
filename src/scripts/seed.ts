@@ -6,7 +6,7 @@ type UserRole = "admin" | "employee" | "viewer";
 
 const DEFAULT_PASSWORD = "test1234";
 
-const ensureUser = async (user: string, role: UserRole) => {
+const ensureUser = async (user: string, role: UserRole, fieldAccess = false) => {
   const [rows] = await db
     .promise()
     .query<RowDataPacket[]>("SELECT user_id FROM users WHERE user = ? LIMIT 1", [
@@ -18,15 +18,15 @@ const ensureUser = async (user: string, role: UserRole) => {
   if (rows.length) {
     const userId = Number(rows[0].user_id);
     await db.promise().execute(
-      "UPDATE users SET password = ?, role = ? WHERE user_id = ?",
-      [hashedPassword, role, userId]
+      "UPDATE users SET password = ?, role = ?, field_access = ? WHERE user_id = ?",
+      [hashedPassword, role, fieldAccess, userId]
     );
     return userId;
   }
 
   const [result] = await db.promise().execute<ResultSetHeader>(
-    "INSERT INTO users (user, password, role) VALUES (?, ?, ?)",
-    [user, hashedPassword, role]
+    "INSERT INTO users (user, password, role, field_access) VALUES (?, ?, ?, ?)",
+    [user, hashedPassword, role, fieldAccess]
   );
 
   return result.insertId;
@@ -37,20 +37,19 @@ const ensureStore = async (store: {
   store_code: string;
   store_channel: "TT" | "MT";
   store_category: "A" | "B" | "C" | "D" | "E" | "F" | "G" | "W" | "WHC";
-  user_id: number | null;
+  user_ids: number[];
   sales_rep: string;
   location: string;
 }) => {
   await db.promise().execute(
     `
       INSERT INTO stores
-        (store_name, store_code, store_channel, store_category, user_id, sales_rep, location)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+        (store_name, store_code, store_channel, store_category, sales_rep, location)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         store_name = VALUES(store_name),
         store_channel = VALUES(store_channel),
         store_category = VALUES(store_category),
-        user_id = VALUES(user_id),
         sales_rep = VALUES(sales_rep),
         location = VALUES(location)
     `,
@@ -59,10 +58,19 @@ const ensureStore = async (store: {
       store.store_code,
       store.store_channel,
       store.store_category,
-      store.user_id,
       store.sales_rep,
       store.location,
     ]
+  );
+
+  await db.promise().query(
+    `
+      INSERT IGNORE INTO store_users (store_id, user_id)
+      SELECT store_id, user_id FROM stores
+      JOIN users ON user_id IN (?)
+      WHERE store_code = ?
+    `,
+    [store.user_ids, store.store_code]
   );
 };
 
@@ -105,13 +113,14 @@ const main = async () => {
     const adminId = await ensureUser("admin_demo", "admin");
     const employeeId = await ensureUser("employee_demo", "employee");
     const viewerId = await ensureUser("viewer_demo", "viewer");
+    const fieldAdminId = await ensureUser("field_admin_demo", "admin", true);
 
     await ensureStore({
       store_name: "Viva Fresh Prishtine Center",
       store_code: "VFS-001",
       store_channel: "MT",
       store_category: "A",
-      user_id: employeeId,
+      user_ids: [employeeId, fieldAdminId],
       sales_rep: "employee_demo",
       location: "Prishtine",
     });
@@ -120,7 +129,7 @@ const main = async () => {
       store_code: "INT-002",
       store_channel: "MT",
       store_category: "B",
-      user_id: employeeId,
+      user_ids: [employeeId],
       sales_rep: "employee_demo",
       location: "Fushe Kosove",
     });
@@ -129,8 +138,8 @@ const main = async () => {
       store_code: "LM-003",
       store_channel: "TT",
       store_category: "C",
-      user_id: viewerId,
-      sales_rep: "viewer_demo",
+      user_ids: [employeeId],
+      sales_rep: "employee_demo",
       location: "Gjakove",
     });
 
@@ -167,7 +176,10 @@ const main = async () => {
     console.log(`- admin_demo / ${DEFAULT_PASSWORD} (admin)`);
     console.log(`- employee_demo / ${DEFAULT_PASSWORD} (employee)`);
     console.log(`- viewer_demo / ${DEFAULT_PASSWORD} (viewer)`);
-    console.log(`Linked user ids: admin=${adminId}, employee=${employeeId}, viewer=${viewerId}`);
+    console.log(`- field_admin_demo / ${DEFAULT_PASSWORD} (admin with field access)`);
+    console.log(
+      `Linked user ids: admin=${adminId}, employee=${employeeId}, viewer=${viewerId}, fieldAdmin=${fieldAdminId}`
+    );
   } catch (error) {
     console.error("Seed failed:", error);
     process.exitCode = 1;

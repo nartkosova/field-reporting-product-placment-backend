@@ -1,20 +1,50 @@
 import { Request, Response } from "express";
 import db from "../models/db";
 import { QueryError, RowDataPacket } from "mysql2";
+import {
+  assignUserToStore,
+  createStoreWithUsers,
+  getAssignedStores,
+  getStoreUsers,
+  getVisibleStores,
+  parseUserIds,
+  StoreAssignmentError,
+  unassignUserFromStore,
+} from "../services/storeAssignmentService";
+import { hasAllStoresAccess } from "../utils/permissions";
+
+const handleAssignmentError = (res: Response, error: unknown, context: string) => {
+  if (error instanceof StoreAssignmentError) {
+    res.status(error.status).json({ error: error.message });
+    return;
+  }
+
+  console.error(`Error ${context}:`, error);
+  res.status(500).json({ error: "Server error" });
+};
 
 export const getStores = async (req: Request, res: Response): Promise<void> => {
   const channel = req.query.channel as string | undefined;
 
   try {
-    let query = "SELECT store_id, store_name, store_category FROM stores";
+    let query = `
+      SELECT s.store_id, s.store_name, s.store_code, s.store_category,
+             GROUP_CONCAT(u.user ORDER BY u.user SEPARATOR ', ') AS assigned_users
+      FROM stores s
+      LEFT JOIN store_users su ON su.store_id = s.store_id
+      LEFT JOIN users u ON u.user_id = su.user_id
+    `;
     const params: string[] = [];
 
     if (channel) {
-      query += " WHERE store_channel = ?";
+      query += " WHERE s.store_channel = ?";
       params.push(channel);
     }
 
-    query += " ORDER BY store_name ASC";
+    query += `
+      GROUP BY s.store_id, s.store_name, s.store_code, s.store_category
+      ORDER BY s.store_name ASC
+    `;
     const [stores] = await db.promise().query<RowDataPacket[]>(query, params);
 
     res.json(stores);
@@ -29,10 +59,23 @@ export const getStoresWithUserId = async (
   res: Response
 ): Promise<void> => {
   try {
-    const query =
-      "SELECT store_id, store_name, store_category, user_id FROM stores WHERE user_id IS NOT NULL ORDER BY store_name ASC";
-    const [stores] = await db.promise().query<RowDataPacket[]>(query);
-    res.json(stores);
+    // Admins also get the stores nobody is assigned to yet.
+    const join = hasAllStoresAccess(req.user) ? "LEFT JOIN" : "JOIN";
+    const [rows] = await db.promise().query<RowDataPacket[]>(`
+      SELECT s.store_id, s.store_name, s.store_category, su.user_id
+      FROM stores s
+      ${join} store_users su ON su.store_id = s.store_id
+      ORDER BY s.store_name ASC
+    `);
+
+    const stores = new Map<number, Record<string, unknown> & { user_ids: number[] }>();
+    for (const { user_id, ...store } of rows) {
+      const entry = stores.get(store.store_id) || { ...store, user_ids: [] };
+      if (user_id !== null) entry.user_ids.push(user_id);
+      stores.set(store.store_id, entry);
+    }
+
+    res.json([...stores.values()]);
   } catch (error) {
     console.error("Error fetching stores:", error);
     res.status(500).json({ error: "Server error" });
@@ -76,30 +119,56 @@ export const getStoreByUserId = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { user_id } = req.params;
-
-    const query = `
-      SELECT store_id, store_name, store_code, store_category
-      FROM stores
-      WHERE user_id IS NOT NULL AND user_id = ?
-      ORDER BY store_name ASC
-    `;
-
-    const [stores] = await db
-      .promise()
-      .query<RowDataPacket[]>(query, [user_id]);
-
-    if (stores.length === 0) {
-      res
-        .status(404)
-        .json({ error: "Perdoruesi nuk ka asnje shitore te caktuar" });
-      return;
-    }
-
-    res.status(200).json(stores);
+    res.status(200).json(await getVisibleStores(Number(req.params.user_id)));
   } catch (error) {
     console.error("Error fetching store:", error);
     res.status(500).json({ error: "Server error" });
+  }
+};
+
+export const getUserAssignedStores = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    res.json(await getAssignedStores(Number(req.params.user_id)));
+  } catch (error) {
+    handleAssignmentError(res, error, "fetching assigned stores");
+  }
+};
+
+export const getStoreAssignedUsers = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    res.json(await getStoreUsers(Number(req.params.store_id)));
+  } catch (error) {
+    handleAssignmentError(res, error, "fetching store users");
+  }
+};
+
+export const addStoreUser = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    await assignUserToStore(Number(req.params.store_id), Number(req.params.user_id));
+    res.status(200).json({ message: "Marketi u caktua me sukses" });
+  } catch (error) {
+    handleAssignmentError(res, error, "assigning store");
+  }
+};
+
+export const removeStoreUser = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    await unassignUserFromStore(Number(req.params.store_id), Number(req.params.user_id));
+    res.status(200).json({ message: "Marketi u largua me sukses" });
+  } catch (error) {
+    handleAssignmentError(res, error, "removing store assignment");
   }
 };
 
@@ -115,7 +184,7 @@ export const createStore = async (
       store_category,
       sales_rep,
       location,
-      user_id,
+      user_ids,
     } = req.body;
 
     const user = req.user;
@@ -138,34 +207,20 @@ export const createStore = async (
       return;
     }
 
-    const userIdToInsert =
-      user_id === "" || user_id === undefined ? null : user_id;
+    const userIds = parseUserIds(user_ids);
+    if (!userIds) {
+      res.status(400).json({ error: "Përdoruesit e zgjedhur janë të pavlefshëm" });
+      return;
+    }
 
-    const query = `
-      INSERT INTO stores 
-        (store_name, store_code, store_channel, store_category, user_id, sales_rep, location) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `;
+    const id = await createStoreWithUsers(
+      { store_name, store_code, store_channel, store_category, sales_rep, location },
+      userIds
+    );
 
-    const [result] = await db
-      .promise()
-      .query(query, [
-        store_name,
-        store_code,
-        store_channel,
-        store_category,
-        userIdToInsert,
-        sales_rep,
-        location,
-      ]);
-
-    res.status(201).json({
-      id: (result as any).insertId,
-      message: "Shitorja u krijua me sukses",
-    });
+    res.status(201).json({ id, message: "Shitorja u krijua me sukses" });
   } catch (error) {
-    console.error("Error creating store:", error);
-    res.status(500).json({ error: "Server Error" });
+    handleAssignmentError(res, error, "creating store");
   }
 };
 
@@ -310,7 +365,6 @@ export const updateStore = async (
       store_category,
       sales_rep,
       location,
-      user_id,
     } = req.body;
     const user = req.user;
     if (!user || !user.user_id) {
@@ -331,13 +385,10 @@ export const updateStore = async (
       return;
     }
 
-    const userIdToUpdate =
-      user_id === "" || user_id === undefined || user_id === 0 ? null : user_id;
-
     const query = `
       UPDATE stores
       SET store_name = ?, store_code = ?, store_channel = ?,
-          store_category = ?, sales_rep = ?, location = ?, user_id = ?
+          store_category = ?, sales_rep = ?, location = ?
       WHERE store_id = ?
     `;
     const [result] = await db
@@ -349,7 +400,6 @@ export const updateStore = async (
         store_category,
         sales_rep,
         location,
-        userIdToUpdate,
         store_id,
       ]);
     if ((result as any).affectedRows === 0) {

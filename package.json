@@ -8,6 +8,8 @@
     "dev": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/index.ts",
     "build": "tsc",
     "seed": "ts-node src/scripts/seed.ts",
+    "test": "node --require ts-node/register/transpile-only --test \"src/utils/*.test.ts\"",
+    "test:db": "node --require ts-node/register/transpile-only --test --test-concurrency=1 \"src/tests/*.test.ts\"",
     "prisma:generate": "prisma generate",
     "prisma:pull": "prisma db pull",
     "prisma:migrate:dev": "prisma migrate dev",
